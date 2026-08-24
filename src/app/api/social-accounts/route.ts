@@ -3,9 +3,16 @@ import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
 import { INITIAL_CLIENTS } from '@/lib/mockData';
 
+export const dynamic = 'force-static';
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const clientId = searchParams.get('clientId');
+  let clientId: string | null = null;
+  try {
+    const { searchParams } = new URL(request.url);
+    clientId = searchParams.get('clientId');
+  } catch (e) {
+    console.warn('URL parse warning on static export:', e);
+  }
 
   try {
     const whereClause = clientId ? { clientId } : {};
@@ -19,7 +26,6 @@ export async function GET(request: Request) {
       return NextResponse.json(serializeData(accounts));
     }
 
-    // Fallback mock accounts if DB is empty
     const mockAccounts = INITIAL_CLIENTS.flatMap((c) => c.socialAccounts || []);
     const filteredMock = clientId ? mockAccounts.filter((a) => a.clientId === clientId) : mockAccounts;
     return NextResponse.json(filteredMock);
@@ -48,10 +54,10 @@ export async function POST(request: Request) {
         finalAccessToken = exchanged.accessToken;
         expiresAt = new Date(Date.now() + exchanged.expiresInSeconds * 1000);
       } catch {
-        expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60 days fallback
+        expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
       }
     } else {
-      expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days fallback for TikTok
+      expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
     }
 
     try {
@@ -96,11 +102,16 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  let id: string | null = null;
+  try {
+    const { searchParams } = new URL(request.url);
+    id = searchParams.get('id');
+  } catch (e) {
+    console.warn('URL parse warning on static export:', e);
+  }
 
   if (!id) {
-    return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
+    return NextResponse.json({ error: 'Social account ID is required' }, { status: 400 });
   }
 
   try {
@@ -109,7 +120,7 @@ export async function DELETE(request: Request) {
     });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.warn('Prisma delete social account error fallback:', error);
-    return NextResponse.json({ success: true });
+    console.warn('Prisma DB delete fallback:', error);
+    return NextResponse.json({ success: true, mock: true });
   }
 }

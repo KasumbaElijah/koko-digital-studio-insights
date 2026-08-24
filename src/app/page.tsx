@@ -86,7 +86,7 @@ export default function DashboardPage() {
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {
     try {
-      await axios.put(`/api/reports/${report.id}`, {
+      await axios.put(`/api/report-details/${report.id}`, {
         goals,
         insights,
         nextSteps,

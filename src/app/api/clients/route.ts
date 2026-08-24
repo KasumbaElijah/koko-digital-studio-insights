@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_CLIENTS } from '@/lib/mockData';
 
+export const dynamic = 'force-static';
+
 export async function GET() {
   try {
     const clients = await prisma.client.findMany({

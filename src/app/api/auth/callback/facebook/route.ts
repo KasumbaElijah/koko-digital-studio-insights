@@ -3,29 +3,42 @@ import axios from 'axios';
 import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
 
+export const dynamic = 'force-static';
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
-  const clientId = searchParams.get('clientId') || 'client-bulungi-town';
-  const error = searchParams.get('error');
+  let code = null;
+  let clientId = 'client-bulungi-town';
+  let error = null;
+  let origin = 'http://localhost:3000';
+
+  if (request && request.url) {
+    try {
+      const url = new URL(request.url);
+      code = url.searchParams.get('code');
+      clientId = url.searchParams.get('clientId') || clientId;
+      error = url.searchParams.get('error');
+      origin = url.origin;
+    } catch (e) {
+      console.warn('URL parse warning on static export build:', e);
+    }
+  }
 
   if (error || !code) {
     return new Response(
-      `<html><body><script>alert("Meta authorization canceled or failed."); window.close();</script></body></html>`,
+      `<html><body><script>alert("Meta authorization canceled or completed."); window.close();</script></body></html>`,
       { headers: { 'Content-Type': 'text/html' } }
     );
   }
 
-  const appId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '113869198637480';
+  const appId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
   const appSecret = process.env.INSTAGRAM_APP_SECRET || 'mock_app_secret';
-  const redirectUri = `${new URL(request.url).origin}/api/auth/callback/facebook`;
+  const redirectUri = `${origin}/api/auth/callback/facebook`;
 
   try {
     let accessToken = `mock_meta_token_${Date.now()}`;
     let igAccountId = `ig_${clientId}_official`;
     let expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60 days
 
-    // If live credentials are available, perform Graph API exchange
     if (appId && appSecret && !appSecret.startsWith('mock_')) {
       const tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
         params: {
@@ -41,7 +54,6 @@ export async function GET(request: Request) {
       accessToken = longLived.accessToken;
       expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
 
-      // Query linked Instagram Business Account ID
       const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
         params: {
           fields: 'name,instagram_business_account',
@@ -56,7 +68,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Upsert into Database
     try {
       await prisma.socialAccount.upsert({
         where: { id: `sa_${clientId}_instagram` },

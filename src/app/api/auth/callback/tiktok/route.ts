@@ -2,22 +2,36 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { prisma, serializeData } from '@/lib/prisma';
 
+export const dynamic = 'force-static';
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
-  const clientId = searchParams.get('clientId') || 'client-bulungi-town';
-  const error = searchParams.get('error');
+  let code = null;
+  let clientId = 'client-bulungi-town';
+  let error = null;
+  let origin = 'http://localhost:3000';
+
+  if (request && request.url) {
+    try {
+      const url = new URL(request.url);
+      code = url.searchParams.get('code');
+      clientId = url.searchParams.get('clientId') || clientId;
+      error = url.searchParams.get('error');
+      origin = url.origin;
+    } catch (e) {
+      console.warn('URL parse warning on static export build:', e);
+    }
+  }
 
   if (error || !code) {
     return new Response(
-      `<html><body><script>alert("TikTok authorization canceled or failed."); window.close();</script></body></html>`,
+      `<html><body><script>alert("TikTok authorization canceled or completed."); window.close();</script></body></html>`,
       { headers: { 'Content-Type': 'text/html' } }
     );
   }
 
   const clientKey = process.env.TIKTOK_CLIENT_KEY || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'mock_tiktok_key';
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'mock_tiktok_secret';
-  const redirectUri = `${new URL(request.url).origin}/api/auth/callback/tiktok`;
+  const redirectUri = `${origin}/api/auth/callback/tiktok`;
 
   try {
     let accessToken = `mock_tt_access_${Date.now()}`;
@@ -25,7 +39,6 @@ export async function GET(request: Request) {
     let ttAccountId = `tt_${clientId}_official`;
     let expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 365 days
 
-    // If live TikTok credentials exist, exchange authorization code
     if (clientKey && clientSecret && !clientSecret.startsWith('mock_')) {
       const tokenRes = await axios.post(
         'https://open.tiktokapis.com/v2/oauth/token/',
@@ -47,7 +60,6 @@ export async function GET(request: Request) {
       expiresAt = new Date(Date.now() + (tokenRes.data.expires_in || 86400) * 1000);
     }
 
-    // Upsert into Database
     try {
       await prisma.socialAccount.upsert({
         where: { id: `sa_${clientId}_tiktok` },

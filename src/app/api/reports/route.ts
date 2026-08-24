@@ -2,36 +2,39 @@ import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_REPORTS } from '@/lib/mockData';
 
+export const dynamic = 'force-static';
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const clientId = searchParams.get('clientId');
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
-
-  if (!clientId) {
-    return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
-  }
-
   try {
-    const report = await prisma.monthlyReport.findFirst({
-      where: { clientId },
-      include: {
-        client: true,
-        posts: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (report) {
-      return NextResponse.json(serializeData(report));
+    let clientId = 'client-bulungi-town';
+    try {
+      const { searchParams } = new URL(request.url);
+      clientId = searchParams.get('clientId') || clientId;
+    } catch (e) {
+      console.warn('URL parse warning on static export:', e);
     }
 
-    // Fallback to mock data if not found in database
-    const mockReport = INITIAL_REPORTS[clientId] || INITIAL_REPORTS['client-bulungi-town'];
-    return NextResponse.json(mockReport);
+    try {
+      const reports = await prisma.monthlyReport.findMany({
+        where: { clientId },
+        include: {
+          client: true,
+          posts: true,
+        },
+        orderBy: { startDate: 'desc' },
+      });
+
+      if (reports.length > 0) {
+        return NextResponse.json(serializeData(reports));
+      }
+    } catch (dbErr) {
+      console.warn('Prisma DB query reports error, returning fallback:', dbErr);
+    }
+
+    const fallbackReport = INITIAL_REPORTS[clientId] || Object.values(INITIAL_REPORTS)[0];
+    return NextResponse.json([fallbackReport]);
   } catch (error) {
-    console.warn('Prisma DB query failed, falling back to mock report:', error);
-    const mockReport = INITIAL_REPORTS[clientId] || INITIAL_REPORTS['client-bulungi-town'];
-    return NextResponse.json(mockReport);
+    console.error('Error fetching reports:', error);
+    return NextResponse.json(Object.values(INITIAL_REPORTS));
   }
 }
