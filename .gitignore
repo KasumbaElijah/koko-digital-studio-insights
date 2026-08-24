@@ -1,0 +1,23 @@
+# Dependencies
+/node_modules
+/.pnpm
+/tmp-npm-cache
+
+# Next.js build output
+/.next/
+/out/
+install.log
+
+# Environment variables (Never commit sensitive credentials)
+.env
+.env*.local
+
+# Database
+/prisma/*.db
+/prisma/*.db-journal
+
+# IDEs & System
+.DS_Store
+*.pem
+.vscode/
+.idea/

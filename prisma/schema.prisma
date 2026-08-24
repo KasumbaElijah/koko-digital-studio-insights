@@ -1,0 +1,66 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Client {
+  id             String          @id @default(uuid())
+  name           String
+  logoUrl        String?
+  createdAt      DateTime        @default(now())
+  socialAccounts SocialAccount[]
+  reports        MonthlyReport[]
+}
+
+model SocialAccount {
+  id                String    @id @default(uuid())
+  clientId          String
+  client            Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform          String    // 'instagram' | 'tiktok'
+  platformAccountId String
+  accessToken       String
+  refreshToken      String?
+  tokenExpiresAt    DateTime?
+  updatedAt         DateTime  @updatedAt
+}
+
+model MonthlyReport {
+  id                 String        @id @default(uuid())
+  clientId           String
+  client             Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  startDate          DateTime
+  endDate            DateTime
+  goals              Json
+  insights           Json
+  nextSteps          Json
+  igFollowersGrowth  Int?
+  igViews            BigInt?
+  igViewsPctChange   Float?
+  igEngagementRate   Float?
+  ttFollowersGrowth  Int?
+  ttViews            BigInt?
+  ttViewsPctChange   Float?
+  ttEngagementRate   Float?
+  posts              ContentPost[]
+  createdAt          DateTime      @default(now())
+}
+
+model ContentPost {
+  id             String        @id @default(uuid())
+  reportId       String
+  report         MonthlyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  platform       String        // 'instagram' | 'tiktok'
+  postId         String
+  contentFormat  String        // 'Image' | 'Videos' | 'Graphic' | 'Stories'
+  viewsCount     Int           @default(0)
+  likesCount     Int           @default(0)
+  commentsCount  Int           @default(0)
+  sharesCount    Int           @default(0)
+  thumbnailUrl   String?
+  isTopPerformer Boolean       @default(false)
+  publishedAt    DateTime
+}
