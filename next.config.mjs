@@ -1,7 +1,12 @@
+const isGithubActions = process.env.GITHUB_ACTIONS || false;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: isGithubActions ? 'export' : undefined,
+  basePath: isGithubActions ? '/koko-digital-studio-insights' : '',
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
