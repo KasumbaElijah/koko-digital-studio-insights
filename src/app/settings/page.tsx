@@ -70,7 +70,11 @@ export default function SettingsPage() {
       return;
     }
 
-    const origin = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+    const origin = window.location.hostname.includes('github.io')
+      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
+      : window.location.hostname === 'localhost'
+      ? 'http://localhost:3000'
+      : window.location.origin;
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook?clientId=${selectedClientId}`);
     
     // Note: Meta prohibits passing explicit 'scope' when 'config_id' is present because config_id defines the onboarding scopes in Meta portal.
@@ -105,7 +109,12 @@ export default function SettingsPage() {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/callback/tiktok?clientId=${selectedClientId}`);
+    const origin = window.location.hostname.includes('github.io')
+      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
+      : window.location.hostname === 'localhost'
+      ? 'http://localhost:3000'
+      : window.location.origin;
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/tiktok?clientId=${selectedClientId}`);
     const scope = encodeURIComponent('user.info.basic,video.list');
     const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code&code_challenge=${base64Digest}&code_challenge_method=S256`;
 
