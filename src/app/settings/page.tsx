@@ -1,46 +1,90 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import Link from 'next/link';
-import { ClientData, SocialAccountData } from '@/lib/types';
+import axios from 'axios';
+import {
+  ArrowLeft,
+  Key,
+  ShieldCheck,
+  RefreshCw,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  HelpCircle,
+  X,
+  Lock,
+  Building,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { INITIAL_CLIENTS } from '@/lib/mockData';
-import { Key, ShieldCheck, RefreshCw, ArrowLeft, AlertTriangle, ExternalLink, Lock, UserCheck, HelpCircle } from 'lucide-react';
+import { ClientData, SocialAccountData } from '@/lib/types';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>(INITIAL_CLIENTS);
-  const [selectedClientId, setSelectedClientId] = useState<string>('client-bulungi-town');
+  const [selectedClientId, setSelectedClientId] = useState<string>(INITIAL_CLIENTS[0].id);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
-
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showConnectModal, setShowConnectModal] = useState(false);
+
+  // Modal States
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [selectedPlatform, setSelectedPlatform] = useState<'instagram' | 'tiktok'>('instagram');
+  const [showVaultModal, setShowVaultModal] = useState<'instagram' | 'tiktok' | null>(null);
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
 
-  // App Credentials Config
-  const [metaAppId, setMetaAppId] = useState('');
-  const [tiktokClientKey, setTiktokClientKey] = useState('');
+  // New Client Form State
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientLogo, setNewClientLogo] = useState('');
 
-  // Form states for manual token / credential vault
-  const [platformAccountId, setPlatformAccountId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
-  const [refreshToken, setRefreshToken] = useState('');
+  // Manual Vault Form States
+  const [vaultAccountId, setVaultAccountId] = useState('');
+  const [vaultAccessToken, setVaultAccessToken] = useState('');
+  const [vaultRefreshToken, setVaultRefreshToken] = useState('');
+  const [isVaultSaving, setIsVaultSaving] = useState(false);
 
-  const selectedClient = clients.find((c) => c.id === selectedClientId) || INITIAL_CLIENTS[0];
+  // Meta Developer Portal Inputs
+  const [metaAppId, setMetaAppId] = useState(
+    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639'
+  );
+  const [metaAppSecret, setMetaAppSecret] = useState('');
+  const [tiktokClientKey, setTiktokClientKey] = useState(
+    process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009'
+  );
+  const [tiktokClientSecret, setTiktokClientSecret] = useState('');
+
+  const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || INITIAL_CLIENTS[0];
+
+  // Helper to load clients from API + localStorage
+  const loadClientsList = async () => {
+    let baseClients = INITIAL_CLIENTS;
+    try {
+      const clientsRes = await axios.get('/api/clients');
+      if (clientsRes.data && Array.isArray(clientsRes.data) && clientsRes.data.length > 0) {
+        baseClients = clientsRes.data;
+      }
+    } catch (e) {
+      console.warn('Clients API fetch fallback:', e);
+    }
+
+    // Merge custom clients saved in localStorage
+    try {
+      const localCustom = localStorage.getItem('koko_custom_clients');
+      if (localCustom) {
+        const parsed: ClientData[] = JSON.parse(localCustom);
+        const existingIds = new Set(baseClients.map((c) => c.id));
+        const newOnes = parsed.filter((c) => !existingIds.has(c.id));
+        baseClients = [...baseClients, ...newOnes];
+      }
+    } catch (e) {
+      console.warn('localStorage custom clients parse error:', e);
+    }
+
+    setClients(baseClients);
+  };
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const clientsRes = await axios.get('/api/clients');
-        if (clientsRes.data && Array.isArray(clientsRes.data) && clientsRes.data.length > 0) {
-          setClients(clientsRes.data);
-        }
-      } catch (e) {
-        console.warn('Clients API fetch fallback:', e);
-      }
-    }
-    loadData();
+    loadClientsList();
   }, []);
 
   useEffect(() => {
@@ -60,6 +104,69 @@ export default function SettingsPage() {
     loadSocialAccounts();
   }, [selectedClientId]);
 
+  // Create New Dynamic Client Account
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClientName.trim()) return;
+
+    const newId = `client-${Date.now()}`;
+    const newClientObj: ClientData = {
+      id: newId,
+      name: newClientName.trim(),
+      logoUrl: newClientLogo.trim() || '/logos/default.svg',
+      createdAt: new Date().toISOString(),
+      socialAccounts: [],
+    };
+
+    try {
+      await axios.post('/api/clients', {
+        name: newClientObj.name,
+        logoUrl: newClientObj.logoUrl,
+      });
+    } catch (err) {
+      console.warn('POST /api/clients fallback to localStorage:', err);
+    }
+
+    // Save to localStorage
+    try {
+      const localCustom = localStorage.getItem('koko_custom_clients');
+      const currentList: ClientData[] = localCustom ? JSON.parse(localCustom) : [];
+      currentList.push(newClientObj);
+      localStorage.setItem('koko_custom_clients', JSON.stringify(currentList));
+    } catch (e) {
+      console.warn('Error saving custom client to localStorage:', e);
+    }
+
+    const updatedClients = [...clients, newClientObj];
+    setClients(updatedClients);
+    setSelectedClientId(newId);
+    setNewClientName('');
+    setNewClientLogo('');
+    setShowAddClientModal(false);
+  };
+
+  // Delete Custom Client Account
+  const handleDeleteClient = (clientId: string) => {
+    if (!confirm('Are you sure you want to remove this client account?')) return;
+    const updated = clients.filter((c) => c.id !== clientId);
+    setClients(updated);
+
+    try {
+      const localCustom = localStorage.getItem('koko_custom_clients');
+      if (localCustom) {
+        const currentList: ClientData[] = JSON.parse(localCustom);
+        const filtered = currentList.filter((c) => c.id !== clientId);
+        localStorage.setItem('koko_custom_clients', JSON.stringify(filtered));
+      }
+    } catch (e) {
+      console.warn('Error updating custom clients in localStorage:', e);
+    }
+
+    if (selectedClientId === clientId && updated.length > 0) {
+      setSelectedClientId(updated[0].id);
+    }
+  };
+
   // Trigger Direct Meta OAuth Login Flow with Onboarding Configuration
   const triggerMetaOAuthLogin = () => {
     const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
@@ -77,7 +184,6 @@ export default function SettingsPage() {
       : window.location.origin;
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook?clientId=${selectedClientId}`);
     
-    // Note: Meta prohibits passing explicit 'scope' when 'config_id' is present because config_id defines the onboarding scopes in Meta portal.
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&response_type=code`
       : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
@@ -87,24 +193,22 @@ export default function SettingsPage() {
 
   // Trigger Direct TikTok OAuth Login Flow with PKCE
   const triggerTikTokOAuthLogin = async () => {
-    const clientKey = tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY;
+    const clientKey = tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
 
     if (!clientKey || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
       setShowSetupGuide(true);
       return;
     }
 
-    // Generate PKCE code verifier and challenge
-    const array = new Uint8Array(32);
-    window.crypto.getRandomValues(array);
-    const codeVerifier = Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
-    sessionStorage.setItem('tt_code_verifier', codeVerifier);
+    const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    localStorage.setItem('tiktok_code_verifier', verifier);
 
-    // Simple SHA-256 base64url for client side
     const encoder = new TextEncoder();
-    const data = encoder.encode(codeVerifier);
-    const digest = await window.crypto.subtle.digest('SHA-256', data);
-    const base64Digest = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    const data = encoder.encode(verifier);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
@@ -116,36 +220,45 @@ export default function SettingsPage() {
       : window.location.origin;
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/tiktok?clientId=${selectedClientId}`);
     const scope = encodeURIComponent('user.info.basic,video.list');
-    const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code&code_challenge=${base64Digest}&code_challenge_method=S256`;
+
+    const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&code_challenge=${challenge}&code_challenge_method=S256`;
 
     window.open(oauthUrl, 'TikTokOAuth', 'width=600,height=700');
   };
 
-  const handleSaveSocialAccount = async (e: React.FormEvent) => {
+  // Save manual credential vault updates
+  const handleSaveVaultCredential = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!showVaultModal) return;
+
+    setIsVaultSaving(true);
     try {
-      const res = await axios.post('/api/social-accounts', {
+      await axios.post('/api/social-accounts', {
         clientId: selectedClientId,
-        platform: selectedPlatform,
-        platformAccountId,
-        accessToken: accessToken || `mock_${selectedPlatform}_token_${Date.now()}`,
-        refreshToken: refreshToken || null,
+        platform: showVaultModal,
+        platformAccountId: vaultAccountId || `${showVaultModal}_${selectedClientId}_official`,
+        accessToken: vaultAccessToken,
+        refreshToken: vaultRefreshToken || undefined,
       });
 
-      setSocialAccounts((prev) => [...prev.filter((a) => a.platform !== selectedPlatform), res.data]);
-      setShowConnectModal(false);
-      setPlatformAccountId('');
-      setAccessToken('');
-      setRefreshToken('');
+      const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
+      setSocialAccounts(res.data || []);
+      setShowVaultModal(null);
+      setVaultAccountId('');
+      setVaultAccessToken('');
+      setVaultRefreshToken('');
     } catch (err) {
-      console.error('Error connecting social account:', err);
+      console.error('Error saving vault credential:', err);
+    } finally {
+      setIsVaultSaving(false);
     }
   };
 
-  const handleRefreshToken = async (accountId?: string) => {
+  // Trigger manual refresh for all active long-lived tokens
+  const handleRefreshToken = async () => {
     setIsRefreshing(true);
     try {
-      await axios.post('/api/auth/refresh', { socialAccountId: accountId });
+      await axios.post('/api/auth/refresh');
       const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
       setSocialAccounts(res.data || []);
     } catch (err) {
@@ -197,9 +310,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Target Client Switcher */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      {/* Target Client Switcher & Add Client Control */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Client Account:</label>
           <select
             value={selectedClientId}
@@ -212,10 +325,27 @@ export default function SettingsPage() {
               </option>
             ))}
           </select>
+
+          <button
+            onClick={() => setShowAddClientModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add New Client
+          </button>
         </div>
 
-        <div className="text-xs font-medium text-gray-500">
-          Connecting for <span className="font-bold text-gray-900">{selectedClient.name}</span>
+        <div className="flex items-center gap-3 text-xs font-medium text-gray-500">
+          <span>Connecting for <strong className="text-gray-900">{selectedClient.name}</strong></span>
+          {clients.length > 1 && (
+            <button
+              onClick={() => handleDeleteClient(selectedClient.id)}
+              title="Remove this client"
+              className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -238,56 +368,46 @@ export default function SettingsPage() {
               </div>
 
               {igAccount ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Connected
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Not Connected
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200">
+                  <AlertCircle className="w-3.5 h-3.5" /> Disconnected
                 </span>
               )}
             </div>
 
-            {igAccount ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 mb-4">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Account ID:</span>
-                  <span className="font-mono font-bold text-gray-900">{igAccount.platformAccountId}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Token Type:</span>
-                  <span className="font-semibold text-gray-800">60-Day Meta Long-Lived Token</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Auto-Refresh:</span>
-                  <span className="font-semibold text-emerald-600">Active</span>
-                </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-2 mb-6 text-xs text-gray-600 font-mono">
+              <div className="flex justify-between">
+                <span>Account ID:</span>
+                <span className="font-bold text-gray-900">{igAccount?.platformAccountId || 'Not Connected'}</span>
               </div>
-            ) : (
-              <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-                Connect {selectedClient.name}&apos;s Instagram Business account to pull follower growth, post reach, engagement rate %, and content formats.
-              </p>
-            )}
+              <div className="flex justify-between">
+                <span>Token Type:</span>
+                <span className="font-bold text-gray-900">60-Day Meta Long-Lived Token</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Auto-Refresh:</span>
+                <span className="text-emerald-600 font-bold">Active</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+          <div className="space-y-2.5">
             <button
               onClick={triggerMetaOAuthLogin}
-              className="w-full py-2.5 px-4 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               1-Click Agency Meta Login ({selectedClient.name})
             </button>
             <button
-              onClick={() => {
-                setSelectedPlatform('instagram');
-                setPlatformAccountId(igAccount?.platformAccountId || '');
-                setShowConnectModal(true);
-              }}
-              className="w-full py-2 px-4 bg-gray-100 text-gray-800 text-xs font-semibold rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onClick={() => setShowVaultModal('instagram')}
+              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all border border-gray-200 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Lock className="w-3.5 h-3.5" />
-              {igAccount ? 'Update Credential Vault' : 'Manual Token Vault'}
+              <Lock className="w-3.5 h-3.5 text-gray-500" />
+              Update Credential Vault
             </button>
           </div>
         </div>
@@ -309,223 +429,331 @@ export default function SettingsPage() {
               </div>
 
               {ttAccount ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Connected
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Not Connected
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200">
+                  <AlertCircle className="w-3.5 h-3.5" /> Disconnected
                 </span>
               )}
             </div>
 
-            {ttAccount ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 mb-4">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Account ID:</span>
-                  <span className="font-mono font-bold text-gray-900">{ttAccount.platformAccountId}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Token Type:</span>
-                  <span className="font-semibold text-gray-800">365-Day TikTok Refresh Token</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Auto-Refresh:</span>
-                  <span className="font-semibold text-emerald-600">Active</span>
-                </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-2 mb-6 text-xs text-gray-600 font-mono">
+              <div className="flex justify-between">
+                <span>Account ID:</span>
+                <span className="font-bold text-gray-900">{ttAccount?.platformAccountId || 'Not Connected'}</span>
               </div>
-            ) : (
-              <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-                Connect {selectedClient.name}&apos;s TikTok account to pull video view counts, engagement %, and top post metrics.
-              </p>
-            )}
+              <div className="flex justify-between">
+                <span>Token Type:</span>
+                <span className="font-bold text-gray-900">365-Day TikTok Refresh Token</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Auto-Refresh:</span>
+                <span className="text-emerald-600 font-bold">Active</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+          <div className="space-y-2.5">
             <button
               onClick={triggerTikTokOAuthLogin}
-              className="w-full py-2.5 px-4 bg-black text-white text-xs font-semibold rounded-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              className="w-full py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               1-Click Agency TikTok Login ({selectedClient.name})
             </button>
             <button
-              onClick={() => {
-                setSelectedPlatform('tiktok');
-                setPlatformAccountId(ttAccount?.platformAccountId || '');
-                setShowConnectModal(true);
-              }}
-              className="w-full py-2 px-4 bg-gray-100 text-gray-800 text-xs font-semibold rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onClick={() => setShowVaultModal('tiktok')}
+              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all border border-gray-200 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Lock className="w-3.5 h-3.5" />
-              {ttAccount ? 'Update Credential Vault' : 'Manual Token Vault'}
+              <Lock className="w-3.5 h-3.5 text-gray-500" />
+              Update Credential Vault
             </button>
           </div>
         </div>
       </div>
 
-      {/* App Credentials Quick Setup Guide Modal */}
-      {showSetupGuide && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-gray-200 my-8">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-              <h3 className="text-xl font-bold text-gray-900 font-heading flex items-center gap-2">
-                <HelpCircle className="w-5 h-5 text-amber-600" />
-                Developer App Registration Setup
-              </h3>
-              <button
-                onClick={() => setShowSetupGuide(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
-              >
-                ✕
-              </button>
+      {/* Developer App Configuration Section */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
+        <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-gray-100">
+          <Key className="w-5 h-5 text-gray-700" />
+          <h2 className="text-lg font-bold text-gray-900 font-heading">
+            Agency App Key & Secret Vault
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-6">
+          These credentials identify Koko Digital Studio as an authorized partner app when requesting OAuth authorization for client accounts.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Meta App Config */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Meta Developer App</h4>
+            <div>
+              <label className="text-xs text-gray-500 font-semibold mb-1 block">Meta App ID (INSTAGRAM_APP_ID)</label>
+              <input
+                type="text"
+                value={metaAppId}
+                onChange={(e) => setMetaAppId(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
+              />
             </div>
+            <div>
+              <label className="text-xs text-gray-500 font-semibold mb-1 block">Meta App Secret (INSTAGRAM_APP_SECRET)</label>
+              <input
+                type="password"
+                placeholder="••••••••••••••••••••••••••••••••"
+                value={metaAppSecret}
+                onChange={(e) => setMetaAppSecret(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
+              />
+            </div>
+          </div>
 
-            <div className="space-y-6 text-xs text-gray-700 leading-relaxed">
-              <p>
-                To resolve the Meta / TikTok misconfiguration error, register Koko Digital Studio&apos;s Developer App IDs in your <code>.env</code> file.
-              </p>
-
-              {/* Meta Setup Steps */}
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
-                <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                  1. Meta for Developers (Instagram Business)
-                </h4>
-                <ol className="list-decimal list-inside space-y-1 text-gray-600 font-medium">
-                  <li>Go to <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">developers.facebook.com</a> and click <strong>Create App</strong>.</li>
-                  <li>Select App Type: <strong>Business</strong>.</li>
-                  <li>Add Product: <strong>Facebook Login for Business</strong> & <strong>Instagram Graph API</strong>.</li>
-                  <li>Under <em>Facebook Login Settings</em>, set Valid OAuth Redirect URI to:
-                    <div className="bg-gray-900 text-emerald-400 font-mono p-2 rounded-lg mt-1 select-all">
-                      http://localhost:3000/api/auth/callback/facebook
-                    </div>
-                  </li>
-                  <li>Copy your <strong>App ID</strong> & <strong>App Secret</strong> into <code>.env</code>:
-                    <div className="bg-gray-900 text-gray-200 font-mono p-2 rounded-lg mt-1 select-all">
-                      INSTAGRAM_APP_ID=&quot;your_meta_app_id&quot;<br />
-                      INSTAGRAM_APP_SECRET=&quot;your_meta_app_secret&quot;<br />
-                      NEXT_PUBLIC_INSTAGRAM_APP_ID=&quot;your_meta_app_id&quot;
-                    </div>
-                  </li>
-                </ol>
-              </div>
-
-              {/* TikTok Setup Steps */}
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
-                <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                  2. TikTok for Developers (Display API v2 + PKCE)
-                </h4>
-                <ol className="list-decimal list-inside space-y-1 text-gray-600 font-medium">
-                  <li>Go to <a href="https://developers.tiktok.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">developers.tiktok.com</a> and create an app.</li>
-                  <li>Add Scopes: <code>user.info.basic</code>, <code>video.list</code>.</li>
-                  <li>Set Redirect URI to:
-                    <div className="bg-gray-900 text-emerald-400 font-mono p-2 rounded-lg mt-1 select-all">
-                      http://localhost:3000/api/auth/callback/tiktok
-                    </div>
-                  </li>
-                  <li>Copy your <strong>Client Key</strong> & <strong>Client Secret</strong> into <code>.env</code>:
-                    <div className="bg-gray-900 text-gray-200 font-mono p-2 rounded-lg mt-1 select-all">
-                      TIKTOK_CLIENT_KEY=&quot;your_tiktok_client_key&quot;<br />
-                      TIKTOK_CLIENT_SECRET=&quot;your_tiktok_client_secret&quot;<br />
-                      NEXT_PUBLIC_TIKTOK_CLIENT_KEY=&quot;your_tiktok_client_key&quot;
-                    </div>
-                  </li>
-                </ol>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  onClick={() => setShowSetupGuide(false)}
-                  className="px-5 py-2.5 bg-black text-white text-xs font-semibold rounded-xl hover:bg-gray-800 transition-all cursor-pointer"
-                >
-                  Got It!
-                </button>
-              </div>
+          {/* TikTok App Config */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">TikTok for Developers App</h4>
+            <div>
+              <label className="text-xs text-gray-500 font-semibold mb-1 block">TikTok Client Key (TIKTOK_CLIENT_KEY)</label>
+              <input
+                type="text"
+                value={tiktokClientKey}
+                onChange={(e) => setTiktokClientKey(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-semibold mb-1 block">TikTok Client Secret (TIKTOK_CLIENT_SECRET)</label>
+              <input
+                type="password"
+                placeholder="••••••••••••••••••••••••••••••••"
+                value={tiktokClientSecret}
+                onChange={(e) => setTiktokClientSecret(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
+              />
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Manual Access Token / Credentials Modal */}
-      {showConnectModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900 font-heading">
-                Credential Vault ({selectedPlatform === 'instagram' ? 'Instagram' : 'TikTok'})
-              </h3>
-              <button
-                onClick={() => setShowConnectModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
-              >
-                ✕
-              </button>
+      {/* Add New Client Account Modal */}
+      {showAddClientModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative border border-gray-100">
+            <button
+              onClick={() => setShowAddClientModal(false)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-black p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                <Building className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 font-heading">Add New Client Account</h3>
+                <p className="text-xs text-gray-500">Create a brand workspace to connect social channels</p>
+              </div>
             </div>
 
-            <form onSubmit={handleSaveSocialAccount} className="space-y-4">
+            <form onSubmit={handleCreateClient} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Account Handle / ID:
-                </label>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Client / Brand Name *</label>
                 <input
                   type="text"
                   required
-                  value={platformAccountId}
-                  onChange={(e) => setPlatformAccountId(e.target.value)}
-                  placeholder={selectedPlatform === 'instagram' ? 'e.g. ig_bulungitown_official' : 'e.g. tt_bulungitown_official'}
-                  className="w-full text-xs font-medium bg-gray-50 border border-gray-300 rounded-xl p-3 outline-none focus:ring-black focus:border-black"
+                  placeholder="e.g. Koko Studio Client Z"
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-medium focus:ring-black focus:border-black outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Access Token:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder={
-                    selectedPlatform === 'instagram'
-                      ? 'Paste short-lived or long-lived Meta Graph token...'
-                      : 'Paste TikTok Display API v2 access token...'
-                  }
-                  className="w-full text-xs font-mono bg-gray-50 border border-gray-300 rounded-xl p-3 outline-none focus:ring-black focus:border-black resize-none"
+                <label className="text-xs font-bold text-gray-700 block mb-1">Logo Image URL (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="/logos/default.svg or https://..."
+                  value={newClientLogo}
+                  onChange={(e) => setNewClientLogo(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-medium focus:ring-black focus:border-black outline-none"
                 />
               </div>
 
-              {selectedPlatform === 'tiktok' && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                    365-Day Refresh Token (Optional):
-                  </label>
-                  <input
-                    type="text"
-                    value={refreshToken}
-                    onChange={(e) => setRefreshToken(e.target.value)}
-                    placeholder="Paste TikTok 365-day refresh token..."
-                    className="w-full text-xs font-mono bg-gray-50 border border-gray-300 rounded-xl p-3 outline-none focus:ring-black focus:border-black"
-                  />
-                </div>
-              )}
-
-              <div className="pt-3 flex items-center justify-end gap-3">
+              <div className="pt-2 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowConnectModal(false)}
-                  className="px-4 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-all cursor-pointer"
+                  onClick={() => setShowAddClientModal(false)}
+                  className="w-1/2 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 text-xs font-semibold text-white bg-black rounded-xl hover:bg-gray-800 transition-all cursor-pointer"
+                  className="w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
-                  Save to Vault
+                  Create Client
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Credential Vault Modal */}
+      {showVaultModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative border border-gray-100">
+            <button
+              onClick={() => setShowVaultModal(null)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-black p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center font-bold">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 font-heading">
+                  Manual Vault: {showVaultModal === 'instagram' ? 'Instagram Business' : 'TikTok for Developers'}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Target: <strong className="text-gray-900">{selectedClient.name}</strong>
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveVaultCredential} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  Platform Account ID ({showVaultModal === 'instagram' ? 'Instagram Business ID' : 'TikTok Open ID'})
+                </label>
+                <input
+                  type="text"
+                  placeholder={showVaultModal === 'instagram' ? 'ig_1784140000000' : 'tt_open_id_12345'}
+                  value={vaultAccountId}
+                  onChange={(e) => setVaultAccountId(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  Access Token ({showVaultModal === 'instagram' ? '60-Day Meta Long-Lived Token' : 'TikTok User Access Token'})
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="EAA..."
+                  value={vaultAccessToken}
+                  onChange={(e) => setVaultAccessToken(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
+                />
+              </div>
+
+              {showVaultModal === 'tiktok' && (
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">
+                    Refresh Token (365-Day TikTok Refresh Token)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="r.12345..."
+                    value={vaultRefreshToken}
+                    onChange={(e) => setVaultRefreshToken(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowVaultModal(null)}
+                  className="w-1/2 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVaultSaving}
+                  className="w-1/2 py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isVaultSaving ? 'Saving Vault...' : 'Save Credential'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* App Setup Guide Modal */}
+      {showSetupGuide && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl relative max-h-[85vh] overflow-y-auto border border-gray-100">
+            <button
+              onClick={() => setShowSetupGuide(false)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-black p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-900 flex items-center justify-center font-bold">
+                <HelpCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 font-heading">
+                  Developer Portal Setup Guide
+                </h3>
+                <p className="text-xs text-gray-500">Step-by-step instructions for Meta & TikTok Developer Apps</p>
+              </div>
+            </div>
+
+            <div className="space-y-6 text-xs text-gray-700 leading-relaxed">
+              {/* Meta Setup Instructions */}
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                  Meta Graph API (Instagram Business)
+                </h4>
+                <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <li>Go to <strong>developers.facebook.com</strong> and open your Meta App.</li>
+                  <li>In <strong>App Settings &gt; Basic</strong>, set App Domains to <code>kasumbaelijah.github.io</code> and <code>localhost</code>.</li>
+                  <li>Set Privacy Policy URL to <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/privacy</code>.</li>
+                  <li>In <strong>Facebook Login for Business &gt; Settings</strong>, add Valid OAuth Redirect URI: <code>http://localhost:3000/api/auth/callback/facebook</code> and <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/api/auth/callback/facebook</code>.</li>
+                  <li>Create an <strong>Instagram Onboarding Configuration</strong> (ID: <code>1590313085890812</code>) with permissions: <code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>pages_read_engagement</code>.</li>
+                </ol>
+              </div>
+
+              {/* TikTok Setup Instructions */}
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-black text-white text-[10px] flex items-center justify-center font-bold">2</span>
+                  TikTok for Developers (Display API v2)
+                </h4>
+                <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <li>Go to <strong>developers.tiktok.com</strong> and click <strong>Create App</strong>.</li>
+                  <li>Name: <code>Koko Digital Studio Insights</code>, Category: <code>Business / Analytics</code>.</li>
+                  <li>Add Product: <strong>TikTok Display API v2</strong>. Add Scopes: <code>user.info.basic</code>, <code>video.list</code>.</li>
+                  <li>Set Redirect URI: <code>http://localhost:3000/api/auth/callback/tiktok</code> and <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/api/auth/callback/tiktok</code>.</li>
+                  <li>Copy your <strong>Client Key</strong> (<code>awzwmzqb12ijk009</code>) and <strong>Client Secret</strong> (<code>0Zb7Xi3fyDH4uRsIH5zSBndADoEnXZoj</code>).</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setShowSetupGuide(false)}
+                className="px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Got It, Close Guide
+              </button>
+            </div>
           </div>
         </div>
       )}

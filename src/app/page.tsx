@@ -29,14 +29,29 @@ export default function DashboardPage() {
   // Load client list on mount
   useEffect(() => {
     async function fetchClients() {
+      let base = INITIAL_CLIENTS;
       try {
         const res = await axios.get('/api/clients');
         if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-          setClients(res.data);
+          base = res.data;
         }
       } catch (err) {
         console.warn('API fetch clients error, fallback to mock clients:', err);
       }
+
+      try {
+        const localCustom = localStorage.getItem('koko_custom_clients');
+        if (localCustom) {
+          const parsed: ClientData[] = JSON.parse(localCustom);
+          const existingIds = new Set(base.map((c) => c.id));
+          const newOnes = parsed.filter((c) => !existingIds.has(c.id));
+          base = [...base, ...newOnes];
+        }
+      } catch (e) {
+        console.warn('localStorage custom clients parse error:', e);
+      }
+
+      setClients(base);
     }
     fetchClients();
   }, []);
