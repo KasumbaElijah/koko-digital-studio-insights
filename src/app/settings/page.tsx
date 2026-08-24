@@ -474,69 +474,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Developer App Configuration Section */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-gray-100">
-          <Key className="w-5 h-5 text-gray-700" />
-          <h2 className="text-lg font-bold text-gray-900 font-heading">
-            Agency App Key & Secret Vault
-          </h2>
-        </div>
-        <p className="text-xs text-gray-500 mb-6">
-          These credentials identify Koko Digital Studio as an authorized partner app when requesting OAuth authorization for client accounts.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Meta App Config */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Meta Developer App</h4>
-            <div>
-              <label className="text-xs text-gray-500 font-semibold mb-1 block">Meta App ID (INSTAGRAM_APP_ID)</label>
-              <input
-                type="text"
-                value={metaAppId}
-                onChange={(e) => setMetaAppId(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 font-semibold mb-1 block">Meta App Secret (INSTAGRAM_APP_SECRET)</label>
-              <input
-                type="password"
-                placeholder="••••••••••••••••••••••••••••••••"
-                value={metaAppSecret}
-                onChange={(e) => setMetaAppSecret(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
-              />
-            </div>
-          </div>
-
-          {/* TikTok App Config */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">TikTok for Developers App</h4>
-            <div>
-              <label className="text-xs text-gray-500 font-semibold mb-1 block">TikTok Client Key (TIKTOK_CLIENT_KEY)</label>
-              <input
-                type="text"
-                value={tiktokClientKey}
-                onChange={(e) => setTiktokClientKey(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 font-semibold mb-1 block">TikTok Client Secret (TIKTOK_CLIENT_SECRET)</label>
-              <input
-                type="password"
-                placeholder="••••••••••••••••••••••••••••••••"
-                value={tiktokClientSecret}
-                onChange={(e) => setTiktokClientSecret(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 font-mono text-gray-800 focus:ring-black outline-none"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Add New Client Account Modal */}
       {showAddClientModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
