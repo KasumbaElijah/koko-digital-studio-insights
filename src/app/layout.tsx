@@ -6,6 +6,9 @@ import { Layers, Key } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'Koko Digital Studio Insights - Social Media Analytics & PDF Reporting',
   description: 'Automated social media analytics and PDF reporting platform for Koko Digital Studio clients',
+  other: {
+    'tiktok-developers-site-verification': 'Qwi4sImXFyAWZKps9lvCkndUkapawJiD',
+  },
 };
 
 export default function RootLayout({
@@ -15,6 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <meta name="tiktok-developers-site-verification" content="Qwi4sImXFyAWZKps9lvCkndUkapawJiD" />
+      </head>
       <body className="min-h-screen flex flex-col bg-[#f8f8f6] font-sans antialiased text-gray-900">
         {/* Navigation Header */}
         <header className="no-print bg-black text-white py-4 px-6 shadow-md border-b border-gray-800">
