@@ -2,14 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_REPORTS } from '@/lib/mockData';
 
-export const dynamic = 'force-static';
-
-export async function generateStaticParams() {
-  return [
-    { id: 'report-bulungi-june' },
-    { id: 'report-safi-june' },
-  ];
-}
 
 export async function GET(
   request: Request,

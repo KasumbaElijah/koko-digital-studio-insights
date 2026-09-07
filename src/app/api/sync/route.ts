@@ -4,7 +4,6 @@ import { fetchTikTokMetrics } from '@/lib/api/tiktok';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_REPORTS } from '@/lib/mockData';
 
-export const dynamic = 'force-static';
 
 export async function POST(request: Request) {
   try {

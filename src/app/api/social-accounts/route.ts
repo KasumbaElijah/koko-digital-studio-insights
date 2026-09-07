@@ -3,7 +3,6 @@ import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
 import { INITIAL_CLIENTS } from '@/lib/mockData';
 
-export const dynamic = 'force-static';
 
 export async function GET(request: Request) {
   let clientId: string | null = null;

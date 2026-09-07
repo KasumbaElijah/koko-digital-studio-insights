@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken, refreshTikTokToken } from '@/lib/api/auth';
 
-export const dynamic = 'force-static';
 
 export async function POST(request: Request) {
   try {
