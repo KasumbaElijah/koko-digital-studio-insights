@@ -6,14 +6,12 @@ import axios from 'axios';
 import {
   ArrowLeft,
   Key,
-  ShieldCheck,
   RefreshCw,
   ExternalLink,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
   X,
-  Lock,
   Building,
   Plus,
   Trash2,
@@ -30,18 +28,11 @@ export default function SettingsPage() {
 
   // Modal States
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [showVaultModal, setShowVaultModal] = useState<'instagram' | 'tiktok' | null>(null);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
 
   // New Client Form State
   const [newClientName, setNewClientName] = useState('');
   const [newClientLogo, setNewClientLogo] = useState('');
-
-  // Manual Vault Form States
-  const [vaultAccountId, setVaultAccountId] = useState('');
-  const [vaultAccessToken, setVaultAccessToken] = useState('');
-  const [vaultRefreshToken, setVaultRefreshToken] = useState('');
-  const [isVaultSaving, setIsVaultSaving] = useState(false);
 
   // Meta Developer Portal Inputs
   const [metaAppId, setMetaAppId] = useState(
@@ -204,6 +195,7 @@ export default function SettingsPage() {
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
     localStorage.setItem('tiktok_code_verifier', verifier);
+    document.cookie = `tiktok_code_verifier=${verifier}; path=/; max-age=600; SameSite=Lax`;
 
     const encoder = new TextEncoder();
     const data = encoder.encode(verifier);
@@ -224,34 +216,6 @@ export default function SettingsPage() {
     const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&code_challenge=${challenge}&code_challenge_method=S256`;
 
     window.open(oauthUrl, 'TikTokOAuth', 'width=600,height=700');
-  };
-
-  // Save manual credential vault updates
-  const handleSaveVaultCredential = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!showVaultModal) return;
-
-    setIsVaultSaving(true);
-    try {
-      await axios.post('/api/social-accounts', {
-        clientId: selectedClientId,
-        platform: showVaultModal,
-        platformAccountId: vaultAccountId || `${showVaultModal}_${selectedClientId}_official`,
-        accessToken: vaultAccessToken,
-        refreshToken: vaultRefreshToken || undefined,
-      });
-
-      const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
-      setSocialAccounts(res.data || []);
-      setShowVaultModal(null);
-      setVaultAccountId('');
-      setVaultAccessToken('');
-      setVaultRefreshToken('');
-    } catch (err) {
-      console.error('Error saving vault credential:', err);
-    } finally {
-      setIsVaultSaving(false);
-    }
   };
 
   // Trigger manual refresh for all active long-lived tokens
@@ -287,7 +251,7 @@ export default function SettingsPage() {
             Agency Account Access & Integrations
           </h1>
           <p className="text-xs text-gray-500 mt-1">
-            Connect client Instagram & TikTok accounts using direct 1-click agency login or credential vault management.
+            Connect client Instagram & TikTok accounts with a direct 1-click agency login.
           </p>
         </div>
 
@@ -402,13 +366,6 @@ export default function SettingsPage() {
               <ExternalLink className="w-3.5 h-3.5" />
               1-Click Agency Meta Login ({selectedClient.name})
             </button>
-            <button
-              onClick={() => setShowVaultModal('instagram')}
-              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all border border-gray-200 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5 text-gray-500" />
-              Update Credential Vault
-            </button>
           </div>
         </div>
 
@@ -462,13 +419,6 @@ export default function SettingsPage() {
             >
               <ExternalLink className="w-3.5 h-3.5" />
               1-Click Agency TikTok Login ({selectedClient.name})
-            </button>
-            <button
-              onClick={() => setShowVaultModal('tiktok')}
-              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all border border-gray-200 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5 text-gray-500" />
-              Update Credential Vault
             </button>
           </div>
         </div>
@@ -539,95 +489,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Manual Credential Vault Modal */}
-      {showVaultModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative border border-gray-100">
-            <button
-              onClick={() => setShowVaultModal(null)}
-              className="absolute top-5 right-5 text-gray-400 hover:text-black p-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center font-bold">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 font-heading">
-                  Manual Vault: {showVaultModal === 'instagram' ? 'Instagram Business' : 'TikTok for Developers'}
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Target: <strong className="text-gray-900">{selectedClient.name}</strong>
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveVaultCredential} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Platform Account ID ({showVaultModal === 'instagram' ? 'Instagram Business ID' : 'TikTok Open ID'})
-                </label>
-                <input
-                  type="text"
-                  placeholder={showVaultModal === 'instagram' ? 'ig_1784140000000' : 'tt_open_id_12345'}
-                  value={vaultAccountId}
-                  onChange={(e) => setVaultAccountId(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Access Token ({showVaultModal === 'instagram' ? '60-Day Meta Long-Lived Token' : 'TikTok User Access Token'})
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="EAA..."
-                  value={vaultAccessToken}
-                  onChange={(e) => setVaultAccessToken(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
-                />
-              </div>
-
-              {showVaultModal === 'tiktok' && (
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">
-                    Refresh Token (365-Day TikTok Refresh Token)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="r.12345..."
-                    value={vaultRefreshToken}
-                    onChange={(e) => setVaultRefreshToken(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-3 text-gray-900 font-mono focus:ring-black focus:border-black outline-none"
-                  />
-                </div>
-              )}
-
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowVaultModal(null)}
-                  className="w-1/2 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isVaultSaving}
-                  className="w-1/2 py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {isVaultSaving ? 'Saving Vault...' : 'Save Credential'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* App Setup Guide Modal */}
       {showSetupGuide && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -660,9 +521,9 @@ export default function SettingsPage() {
                 </h4>
                 <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <li>Go to <strong>developers.facebook.com</strong> and open your Meta App.</li>
-                  <li>In <strong>App Settings &gt; Basic</strong>, set App Domains to <code>kasumbaelijah.github.io</code> and <code>localhost</code>.</li>
-                  <li>Set Privacy Policy URL to <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/privacy</code>.</li>
-                  <li>In <strong>Facebook Login for Business &gt; Settings</strong>, add Valid OAuth Redirect URI: <code>http://localhost:3000/api/auth/callback/facebook</code> and <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/api/auth/callback/facebook</code>.</li>
+                  <li>In <strong>App Settings &gt; Basic</strong>, set App Domains to your Vercel domain and <code>localhost</code>.</li>
+                  <li>Set Privacy Policy URL to <code>https://YOUR-VERCEL-URL/privacy</code>.</li>
+                  <li>In <strong>Facebook Login for Business &gt; Settings</strong>, add Valid OAuth Redirect URI: <code>https://YOUR-VERCEL-URL/api/auth/callback/facebook</code> and <code>http://localhost:3000/api/auth/callback/facebook</code>.</li>
                   <li>Create an <strong>Instagram Onboarding Configuration</strong> (ID: <code>1590313085890812</code>) with permissions: <code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>pages_read_engagement</code>.</li>
                 </ol>
               </div>
@@ -677,7 +538,7 @@ export default function SettingsPage() {
                   <li>Go to <strong>developers.tiktok.com</strong> and click <strong>Create App</strong>.</li>
                   <li>Name: <code>Koko Digital Studio Insights</code>, Category: <code>Business / Analytics</code>.</li>
                   <li>Add Product: <strong>TikTok Display API v2</strong>. Add Scopes: <code>user.info.basic</code>, <code>video.list</code>.</li>
-                  <li>Set Redirect URI: <code>http://localhost:3000/api/auth/callback/tiktok</code> and <code>https://kasumbaelijah.github.io/koko-digital-studio-insights/api/auth/callback/tiktok</code>.</li>
+                  <li>Set Redirect URI: <code>https://YOUR-VERCEL-URL/api/auth/callback/tiktok</code> and <code>http://localhost:3000/api/auth/callback/tiktok</code>.</li>
                   <li>Copy your <strong>Client Key</strong> (<code>awzwmzqb12ijk009</code>) and <strong>Client Secret</strong> (<code>0Zb7Xi3fyDH4uRsIH5zSBndADoEnXZoj</code>).</li>
                 </ol>
               </div>
