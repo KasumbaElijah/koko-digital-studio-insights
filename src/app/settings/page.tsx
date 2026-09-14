@@ -158,8 +158,8 @@ export default function SettingsPage() {
     }
   };
 
-  // Trigger Official Business Login for Instagram (March 2026 update)
-  const triggerMetaOAuthLogin = () => {
+  // 1. Trigger Direct Business Login for Instagram (Requires Instagram App ID)
+  const triggerInstagramDirectLogin = () => {
     const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
 
     if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
@@ -178,10 +178,35 @@ export default function SettingsPage() {
       'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish'
     );
     
-    // Official Business Login for Instagram authorization window
+    // Official Business Login for Instagram authorization window (Requires Instagram App ID)
     const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&enable_fb_login=true`;
 
     window.open(oauthUrl, 'InstagramBusinessLogin', 'width=600,height=700');
+  };
+
+  // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639 & Config ID)
+  const triggerMetaFacebookLogin = () => {
+    const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
+    const configId = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
+
+    if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
+      setShowSetupGuide(true);
+      return;
+    }
+
+    const origin = window.location.hostname.includes('github.io')
+      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
+      : window.location.hostname === 'localhost'
+      ? 'http://localhost:3000'
+      : window.location.origin;
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
+    const state = encodeURIComponent(selectedClientId);
+    
+    const oauthUrl = configId
+      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
+
+    window.open(oauthUrl, 'MetaOAuth', 'width=600,height=700');
   };
 
   // Trigger Direct TikTok OAuth Login Flow with PKCE
@@ -361,13 +386,20 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <button
-              onClick={triggerMetaOAuthLogin}
-              className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:opacity-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+              onClick={triggerMetaFacebookLogin}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              1-Click Business Login for Instagram ({selectedClient.name})
+              1-Click Meta Business Login ({selectedClient.name})
+            </button>
+            <button
+              onClick={triggerInstagramDirectLogin}
+              className="w-full py-2 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:opacity-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Direct Instagram Login (Requires Instagram App ID)
             </button>
           </div>
         </div>
