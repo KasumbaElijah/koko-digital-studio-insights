@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     try {
       const url = new URL(request.url);
       code = url.searchParams.get('code');
-      clientId = url.searchParams.get('clientId') || clientId;
+      clientId = url.searchParams.get('state') || url.searchParams.get('clientId') || clientId;
       error = url.searchParams.get('error');
       origin = url.origin;
     } catch (e) {

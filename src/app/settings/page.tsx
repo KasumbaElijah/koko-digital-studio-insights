@@ -173,11 +173,12 @@ export default function SettingsPage() {
       : window.location.hostname === 'localhost'
       ? 'http://localhost:3000'
       : window.location.origin;
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook?clientId=${selectedClientId}`);
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
+    const state = encodeURIComponent(selectedClientId);
     
     const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
+      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
 
     window.open(oauthUrl, 'MetaOAuth', 'width=600,height=700');
   };
@@ -210,10 +211,11 @@ export default function SettingsPage() {
       : window.location.hostname === 'localhost'
       ? 'http://localhost:3000'
       : window.location.origin;
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/tiktok?clientId=${selectedClientId}`);
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/tiktok`);
+    const state = encodeURIComponent(selectedClientId);
     const scope = encodeURIComponent('user.info.basic,video.list');
 
-    const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&code_challenge=${challenge}&code_challenge_method=S256`;
+    const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`;
 
     window.open(oauthUrl, 'TikTokOAuth', 'width=600,height=700');
   };
@@ -539,7 +541,7 @@ export default function SettingsPage() {
                   <li>Name: <code>Koko Digital Studio Insights</code>, Category: <code>Business / Analytics</code>.</li>
                   <li>Add Product: <strong>TikTok Display API v2</strong>. Add Scopes: <code>user.info.basic</code>, <code>video.list</code>.</li>
                   <li>Set Redirect URI: <code>https://YOUR-VERCEL-URL/api/auth/callback/tiktok</code> and <code>http://localhost:3000/api/auth/callback/tiktok</code>.</li>
-                  <li>Copy your <strong>Client Key</strong> (<code>awzwmzqb12ijk009</code>) and <strong>Client Secret</strong> (<code>0Zb7Xi3fyDH4uRsIH5zSBndADoEnXZoj</code>).</li>
+                  <li>Copy your <strong>Client Key</strong> and <strong>Client Secret</strong> into your Vercel project environment variables (<code>TIKTOK_CLIENT_KEY</code> and <code>TIKTOK_CLIENT_SECRET</code>).</li>
                 </ol>
               </div>
             </div>

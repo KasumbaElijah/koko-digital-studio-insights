@@ -85,20 +85,20 @@ export async function fetchTikTokMetrics(
       totalEngagements += (v.like_count || 0) + (v.comment_count || 0) + (v.share_count || 0);
     });
 
-    const engagementRate = totalViews > 0 ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1)) : 8.2;
+    const engagementRate = totalViews > 0 ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1)) : 0;
 
     return {
-      followersGrowth: 2600,
-      totalViews: totalViews || 476800,
+      followersGrowth: 0,
+      totalViews: totalViews || 0,
       engagementRate,
       posts: [],
     };
   } catch (error) {
-    console.warn('TikTok Display API request failed, utilizing fallback analytics calculation:', error);
+    console.warn('TikTok Display API request failed, returning baseline 0 metrics:', error);
     return {
-      followersGrowth: 2600,
-      totalViews: 476800,
-      engagementRate: 8.2,
+      followersGrowth: 0,
+      totalViews: 0,
+      engagementRate: 0,
       posts: [],
     };
   }

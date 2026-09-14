@@ -82,17 +82,17 @@ export async function fetchInstagramMetrics(
     });
 
     return {
-      followersGrowth: followersGrowth || 1100,
-      totalViews: totalViews || 167000,
-      engagementRate: 4.5,
+      followersGrowth: followersGrowth || 0,
+      totalViews: totalViews || 0,
+      engagementRate: 0,
       posts: [],
     };
   } catch (error) {
-    console.warn('Meta Graph API request failed, utilizing fallback analytics calculation:', error);
+    console.warn('Meta Graph API request failed, returning baseline 0 metrics:', error);
     return {
-      followersGrowth: 1100,
-      totalViews: 167000,
-      engagementRate: 4.5,
+      followersGrowth: 0,
+      totalViews: 0,
+      engagementRate: 0,
       posts: [],
     };
   }

@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     try {
       const url = new URL(request.url);
       code = url.searchParams.get('code');
-      clientId = url.searchParams.get('clientId') || clientId;
+      clientId = url.searchParams.get('state') || url.searchParams.get('clientId') || clientId;
       error = url.searchParams.get('error');
       origin = url.origin;
     } catch (e) {
@@ -35,6 +35,11 @@ export async function GET(request: Request) {
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'mock_tiktok_secret';
   const redirectUri = `${origin}/api/auth/callback/tiktok`;
 
+  // Read PKCE code verifier from cookie if present
+  const cookieHeader = request && request.headers ? request.headers.get('cookie') || '' : '';
+  const match = cookieHeader.match(/tiktok_code_verifier=([^;]+)/);
+  const codeVerifier = match ? decodeURIComponent(match[1].trim()) : null;
+
   // Fail loudly instead of silently issuing a fake token when real secret isn't configured
   if (!clientSecret || clientSecret.startsWith('mock_')) {
     console.error('TIKTOK_CLIENT_SECRET is missing or placeholder in this environment.');
@@ -48,15 +53,20 @@ export async function GET(request: Request) {
   }
 
   try {
+    const postBody: Record<string, string> = {
+      client_key: clientKey,
+      client_secret: clientSecret,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+    };
+    if (codeVerifier) {
+      postBody.code_verifier = codeVerifier;
+    }
+
     const tokenRes = await axios.post(
       'https://open.tiktokapis.com/v2/oauth/token/',
-      new URLSearchParams({
-        client_key: clientKey,
-        client_secret: clientSecret,
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-      }).toString(),
+      new URLSearchParams(postBody).toString(),
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       }
