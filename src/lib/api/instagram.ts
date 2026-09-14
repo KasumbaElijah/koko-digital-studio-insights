@@ -59,19 +59,35 @@ export async function fetchInstagramMetrics(
   }
 
   try {
-    // Meta Graph API integration
-    const url = `https://graph.facebook.com/v19.0/${platformAccountId}/insights`;
-    const response = await axios.get(url, {
-      params: {
-        metric: 'follower_count,impressions,reach,profile_views',
-        period: 'day',
-        since: Math.floor(startDate.getTime() / 1000),
-        until: Math.floor(endDate.getTime() / 1000),
-        access_token: accessToken,
-      },
-    });
+    // Try Instagram Graph API endpoint first (for Instagram User Access Tokens)
+    let data: any[] = [];
+    try {
+      const igUrl = 'https://graph.instagram.com/v19.0/me/insights';
+      const igRes = await axios.get(igUrl, {
+        params: {
+          metric: 'impressions,reach,profile_views',
+          period: 'day',
+          since: Math.floor(startDate.getTime() / 1000),
+          until: Math.floor(endDate.getTime() / 1000),
+          access_token: accessToken,
+        },
+      });
+      data = igRes.data?.data || [];
+    } catch {
+      // Fall back to Meta Facebook Graph API
+      const fbUrl = `https://graph.facebook.com/v19.0/${platformAccountId}/insights`;
+      const fbRes = await axios.get(fbUrl, {
+        params: {
+          metric: 'follower_count,impressions,reach,profile_views',
+          period: 'day',
+          since: Math.floor(startDate.getTime() / 1000),
+          until: Math.floor(endDate.getTime() / 1000),
+          access_token: accessToken,
+        },
+      });
+      data = fbRes.data?.data || [];
+    }
 
-    const data = response.data.data || [];
     let totalViews = 0;
     let followersGrowth = 0;
 
@@ -88,7 +104,7 @@ export async function fetchInstagramMetrics(
       posts: [],
     };
   } catch (error) {
-    console.warn('Meta Graph API request failed, returning baseline 0 metrics:', error);
+    console.warn('Instagram metrics request failed, returning baseline 0 metrics:', error);
     return {
       followersGrowth: 0,
       totalViews: 0,

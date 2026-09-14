@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
-import { exchangeMetaLongLivedToken, refreshTikTokToken } from '@/lib/api/auth';
+import { refreshInstagramLongLivedToken, exchangeMetaLongLivedToken, refreshTikTokToken } from '@/lib/api/auth';
 
 
 export async function POST(request: Request) {
@@ -24,7 +24,12 @@ export async function POST(request: Request) {
       for (const account of accounts) {
         if (account.platform === 'instagram' && account.accessToken) {
           try {
-            const refreshed = await exchangeMetaLongLivedToken(account.accessToken);
+            let refreshed;
+            try {
+              refreshed = await refreshInstagramLongLivedToken(account.accessToken);
+            } catch {
+              refreshed = await exchangeMetaLongLivedToken(account.accessToken);
+            }
             const expiresAt = new Date(Date.now() + refreshed.expiresInSeconds * 1000);
             const updated = await prisma.socialAccount.update({
               where: { id: account.id },
@@ -35,7 +40,7 @@ export async function POST(request: Request) {
             });
             refreshedAccounts.push(updated);
           } catch (e) {
-            console.warn(`Failed to refresh Meta token for account ${account.id}:`, e);
+            console.warn(`Failed to refresh Instagram token for account ${account.id}:`, e);
           }
         } else if (account.platform === 'tiktok' && account.refreshToken) {
           try {

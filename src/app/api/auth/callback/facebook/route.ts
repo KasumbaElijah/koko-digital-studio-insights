@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { prisma, serializeData } from '@/lib/prisma';
-import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
+import { exchangeMetaLongLivedToken, exchangeInstagramLongLivedToken } from '@/lib/api/auth';
 
 // NOTE: 'force-static' was removed here on purpose. It was pre-rendering
 // this route once at build time, so it could never read the real ?code=
@@ -52,44 +52,75 @@ export async function GET(request: Request) {
     );
   }
 
+  // Strip trailing '#_' if present
+  const cleanCode = code.replace(/#_.*$/, '');
+
   try {
-    const tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
-      params: {
-        client_id: appId,
-        client_secret: appSecret,
-        redirect_uri: redirectUri,
-        code,
-      },
-    });
+    let accessToken: string = '';
+    let igAccountId: string = `ig_${clientId}_official`;
+    let expiresAt = new Date(Date.now() + 60 * 86400 * 1000);
 
-    const shortLivedToken = tokenRes.data.access_token;
-    const longLived = await exchangeMetaLongLivedToken(shortLivedToken);
-    const accessToken = longLived.accessToken;
-    const expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
+    // Try Instagram Business Login code exchange first
+    try {
+      const igFormData = new URLSearchParams();
+      igFormData.append('client_id', appId);
+      igFormData.append('client_secret', appSecret);
+      igFormData.append('grant_type', 'authorization_code');
+      igFormData.append('redirect_uri', redirectUri);
+      igFormData.append('code', cleanCode);
 
-    let igAccountId = `ig_${clientId}_official`; // fallback only if no linked IG account is found below
-    const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-      params: {
-        fields: 'name,instagram_business_account',
-        access_token: accessToken,
-      },
-    });
+      const igRes = await axios.post('https://api.instagram.com/oauth/access_token', igFormData.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
 
-    const pages = meAccountsRes.data.data || [];
-    const linkedIg = pages.find((p: any) => p.instagram_business_account?.id);
-    if (linkedIg) {
-      igAccountId = linkedIg.instagram_business_account.id;
-    } else {
-      // No Instagram Business account is linked to any Page this user
-      // manages. Surface this clearly instead of saving a placeholder ID
-      // that looks real but isn't.
-      return new Response(
-        `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
-          <h2 style="color:#b00020;">No linked Instagram Business account found</h2>
-          <p>This Facebook login succeeded, but no Page you manage has an Instagram Business/Creator account linked. Link one in Meta Business Suite, then try again.</p>
-        </body></html>`,
-        { status: 400, headers: { 'Content-Type': 'text/html' } }
-      );
+      const resData = igRes.data;
+      const shortToken = resData.access_token || resData.data?.[0]?.access_token;
+      if (shortToken) {
+        igAccountId = resData.user_id || resData.data?.[0]?.user_id || `ig_${clientId}_official`;
+        const longLived = await exchangeInstagramLongLivedToken(shortToken);
+        accessToken = longLived.accessToken;
+        expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
+      }
+    } catch (igErr) {
+      // If Instagram direct exchange failed, fall back to Facebook Graph API flow below
+    }
+
+    if (!accessToken) {
+      const tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
+        params: {
+          client_id: appId,
+          client_secret: appSecret,
+          redirect_uri: redirectUri,
+          code: cleanCode,
+        },
+      });
+
+      const shortLivedToken = tokenRes.data.access_token;
+      const longLived = await exchangeMetaLongLivedToken(shortLivedToken);
+      accessToken = longLived.accessToken;
+      expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
+
+      igAccountId = `ig_${clientId}_official`;
+      const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+        params: {
+          fields: 'name,instagram_business_account',
+          access_token: accessToken,
+        },
+      });
+
+      const pages = meAccountsRes.data.data || [];
+      const linkedIg = pages.find((p: any) => p.instagram_business_account?.id);
+      if (linkedIg) {
+        igAccountId = linkedIg.instagram_business_account.id;
+      } else {
+        return new Response(
+          `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
+            <h2 style="color:#b00020;">No linked Instagram Business account found</h2>
+            <p>This Facebook login succeeded, but no Page you manage has an Instagram Business/Creator account linked. Link one in Meta Business Suite, or use the direct Instagram login.</p>
+          </body></html>`,
+          { status: 400, headers: { 'Content-Type': 'text/html' } }
+        );
+      }
     }
 
     await prisma.socialAccount.upsert({

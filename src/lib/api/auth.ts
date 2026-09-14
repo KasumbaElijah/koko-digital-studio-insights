@@ -46,6 +46,64 @@ export async function exchangeMetaLongLivedToken(shortLivedToken: string): Promi
 }
 
 /**
+ * Exchanges a short-lived Instagram user access token for a 60-day long-lived access token
+ * using the official Business Login for Instagram endpoint:
+ * GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=...&access_token=...
+ */
+export async function exchangeInstagramLongLivedToken(shortLivedToken: string): Promise<{ accessToken: string; expiresInSeconds: number }> {
+  const appSecret = process.env.INSTAGRAM_APP_SECRET;
+
+  if (!appSecret || appSecret.startsWith('mock_')) {
+    console.warn('INSTAGRAM_APP_SECRET missing; returning mock long-lived token.');
+    return {
+      accessToken: `mock_ig_60day_${Date.now()}`,
+      expiresInSeconds: 5184000,
+    };
+  }
+
+  try {
+    const response = await axios.get('https://graph.instagram.com/access_token', {
+      params: {
+        grant_type: 'ig_exchange_token',
+        client_secret: appSecret,
+        access_token: shortLivedToken,
+      },
+    });
+
+    return {
+      accessToken: response.data.access_token,
+      expiresInSeconds: response.data.expires_in || 5184000,
+    };
+  } catch (error: any) {
+    console.warn('Instagram graph exchange failed, attempting fallback to Meta graph:', error?.response?.data || error?.message);
+    return exchangeMetaLongLivedToken(shortLivedToken);
+  }
+}
+
+/**
+ * Refreshes an existing Instagram 60-day long-lived access token using:
+ * GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=...
+ */
+export async function refreshInstagramLongLivedToken(longLivedToken: string): Promise<{ accessToken: string; expiresInSeconds: number }> {
+  try {
+    const response = await axios.get('https://graph.instagram.com/refresh_access_token', {
+      params: {
+        grant_type: 'ig_refresh_token',
+        access_token: longLivedToken,
+      },
+    });
+
+    return {
+      accessToken: response.data.access_token,
+      expiresInSeconds: response.data.expires_in || 5184000,
+    };
+  } catch (error: any) {
+    console.error('Error refreshing Instagram long-lived token:', error?.response?.data || error?.message);
+    throw new Error('Failed to refresh Instagram access token');
+  }
+}
+
+/**
  * Refreshes a TikTok user access token using the 365-day refresh token.
  */
 export async function refreshTikTokToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresInSeconds: number }> {

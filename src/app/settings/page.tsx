@@ -158,10 +158,9 @@ export default function SettingsPage() {
     }
   };
 
-  // Trigger Direct Meta OAuth Login Flow with Onboarding Configuration
+  // Trigger Official Business Login for Instagram (March 2026 update)
   const triggerMetaOAuthLogin = () => {
     const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
-    const configId = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
 
     if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
       setShowSetupGuide(true);
@@ -173,14 +172,16 @@ export default function SettingsPage() {
       : window.location.hostname === 'localhost'
       ? 'http://localhost:3000'
       : window.location.origin;
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
     const state = encodeURIComponent(selectedClientId);
+    const scope = encodeURIComponent(
+      'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish'
+    );
     
-    const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
+    // Official Business Login for Instagram authorization window
+    const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&enable_fb_login=true`;
 
-    window.open(oauthUrl, 'MetaOAuth', 'width=600,height=700');
+    window.open(oauthUrl, 'InstagramBusinessLogin', 'width=600,height=700');
   };
 
   // Trigger Direct TikTok OAuth Login Flow with PKCE
@@ -363,10 +364,10 @@ export default function SettingsPage() {
           <div className="space-y-2.5">
             <button
               onClick={triggerMetaOAuthLogin}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+              className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:opacity-95 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              1-Click Agency Meta Login ({selectedClient.name})
+              1-Click Business Login for Instagram ({selectedClient.name})
             </button>
           </div>
         </div>
@@ -515,18 +516,19 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-6 text-xs text-gray-700 leading-relaxed">
-              {/* Meta Setup Instructions */}
+              {/* Business Login for Instagram Setup Instructions */}
               <div>
                 <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
-                  Meta Graph API (Instagram Business)
+                  <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-pink-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                  Business Login for Instagram (Instagram API with Instagram Login)
                 </h4>
                 <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <li>Go to <strong>developers.facebook.com</strong> and open your Meta App.</li>
-                  <li>In <strong>App Settings &gt; Basic</strong>, set App Domains to your Vercel domain and <code>localhost</code>.</li>
-                  <li>Set Privacy Policy URL to <code>https://YOUR-VERCEL-URL/privacy</code>.</li>
-                  <li>In <strong>Facebook Login for Business &gt; Settings</strong>, add Valid OAuth Redirect URI: <code>https://YOUR-VERCEL-URL/api/auth/callback/facebook</code> and <code>http://localhost:3000/api/auth/callback/facebook</code>.</li>
-                  <li>Create an <strong>Instagram Onboarding Configuration</strong> (ID: <code>1590313085890812</code>) with permissions: <code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>pages_read_engagement</code>.</li>
+                  <li>In App Dashboard, navigate to <strong>Instagram &gt; API setup with Instagram login &gt; 3. Set up Instagram business login &gt; Business login settings</strong>.</li>
+                  <li>Copy your <strong>Instagram App ID</strong> and <strong>Instagram App Secret</strong> into your Vercel project environment variables (<code>INSTAGRAM_APP_ID</code> and <code>INSTAGRAM_APP_SECRET</code>).</li>
+                  <li>In <strong>OAuth redirect URIs</strong>, add: <code>https://YOUR-VERCEL-URL/api/auth/callback/instagram</code> and <code>http://localhost:3000/api/auth/callback/instagram</code>.</li>
+                  <li>Required new permissions: <code>instagram_business_basic</code>, <code>instagram_business_manage_messages</code>, <code>instagram_business_manage_comments</code>, <code>instagram_business_content_publish</code>.</li>
+                  <li>Click <strong>1-Click Business Login for Instagram</strong> to authenticate. Tokens are automatically upgraded to 60-day long-lived tokens with automatic renewal.</li>
                 </ol>
               </div>
 
