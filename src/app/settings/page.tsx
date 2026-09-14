@@ -45,7 +45,7 @@ export default function SettingsPage() {
 
   // Meta Developer Portal Inputs
   const [metaAppId, setMetaAppId] = useState(
-    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639'
+    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335'
   );
   const [metaAppSecret, setMetaAppSecret] = useState('');
   const [tiktokClientKey, setTiktokClientKey] = useState(
@@ -182,7 +182,7 @@ export default function SettingsPage() {
 
   // 1. Trigger Direct Business Login for Instagram (Requires Instagram App ID)
   const triggerInstagramDirectLogin = () => {
-    const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
+    const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335';
 
     if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
       setShowSetupGuide(true);
@@ -208,10 +208,10 @@ export default function SettingsPage() {
 
   // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639 & Config ID)
   const triggerMetaFacebookLogin = () => {
-    const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
+    const fbAppId = '1532121481550639';
     const configId = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
 
-    if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
+    if (!fbAppId || fbAppId.length < 5) {
       setShowSetupGuide(true);
       return;
     }
@@ -225,8 +225,8 @@ export default function SettingsPage() {
     const state = encodeURIComponent(selectedClientId);
     
     const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
+      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };

@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const appId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
+  const appId = process.env.FACEBOOK_APP_ID || '1532121481550639';
   const appSecret = process.env.INSTAGRAM_APP_SECRET || 'mock_app_secret';
   const redirectUri = `${origin}/api/auth/callback/facebook`;
 
