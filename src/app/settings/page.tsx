@@ -180,6 +180,15 @@ export default function SettingsPage() {
     }
   };
 
+  // Canonical OAuth origin helper: locks vercel.app deploys to the whitelisted production domain
+  const getOAuthOrigin = () => {
+    if (typeof window === 'undefined') return 'https://koko-digital-studio-insights.vercel.app';
+    if (window.location.hostname === 'localhost') return 'http://localhost:3000';
+    if (window.location.hostname.includes('github.io')) return 'https://kasumbaelijah.github.io/koko-digital-studio-insights';
+    if (window.location.hostname.endsWith('vercel.app')) return 'https://koko-digital-studio-insights.vercel.app';
+    return window.location.origin;
+  };
+
   // 1. Trigger Direct Business Login for Instagram (Requires Instagram App ID)
   const triggerInstagramDirectLogin = () => {
     const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335';
@@ -189,11 +198,7 @@ export default function SettingsPage() {
       return;
     }
 
-    const origin = window.location.hostname.includes('github.io')
-      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
-      : window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : window.location.origin;
+    const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
     const state = encodeURIComponent(selectedClientId);
     const scope = encodeURIComponent(
@@ -216,11 +221,7 @@ export default function SettingsPage() {
       return;
     }
 
-    const origin = window.location.hostname.includes('github.io')
-      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
-      : window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : window.location.origin;
+    const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
     const state = encodeURIComponent(selectedClientId);
     
@@ -248,17 +249,13 @@ export default function SettingsPage() {
 
     const encoder = new TextEncoder();
     const data = encoder.encode(verifier);
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    const origin = window.location.hostname.includes('github.io')
-      ? 'https://kasumbaelijah.github.io/koko-digital-studio-insights'
-      : window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : window.location.origin;
+    const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/tiktok`);
     const state = encodeURIComponent(selectedClientId);
     const scope = encodeURIComponent('user.info.basic,video.list');
