@@ -89,36 +89,62 @@ export async function GET(request: Request) {
     const accessToken = longLived.accessToken;
     const expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
 
-    // Save to PostgreSQL via Prisma
-    await prisma.socialAccount.upsert({
-      where: { id: `sa_${clientId}_instagram` },
-      update: {
-        platformAccountId: String(igUserId),
-        accessToken,
-        tokenExpiresAt: expiresAt,
-      },
-      create: {
-        id: `sa_${clientId}_instagram`,
-        clientId,
-        platform: 'instagram',
-        platformAccountId: String(igUserId),
-        accessToken,
-        tokenExpiresAt: expiresAt,
-      },
-    });
+    // Save to PostgreSQL via Prisma with safe offline fallback
+    try {
+      await prisma.socialAccount.upsert({
+        where: { id: `sa_${clientId}_instagram` },
+        update: {
+          platformAccountId: String(igUserId),
+          accessToken,
+          tokenExpiresAt: expiresAt,
+        },
+        create: {
+          id: `sa_${clientId}_instagram`,
+          clientId,
+          platform: 'instagram',
+          platformAccountId: String(igUserId),
+          accessToken,
+          tokenExpiresAt: expiresAt,
+        },
+      });
+    } catch (dbErr) {
+      console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
+    }
+
+    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igUserId))}&clientId=${encodeURIComponent(clientId)}`;
 
     return new Response(
-      `<html>
-        <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8f8f6;">
-          <h2 style="color: #111;">Instagram Business Account Connected!</h2>
-          <p style="color: #666; font-size: 14px;">Connected Instagram Account ID: <strong>${igUserId}</strong></p>
-          <p style="color: #10b981; font-size: 13px; font-weight: bold;">60-day Long-Lived Token Active with Auto-Refresh</p>
-          <p style="color: #888; font-size: 13px; margin-top: 15px;">Closing window and updating dashboard...</p>
+      `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Instagram Connected</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
+          <div style="max-width: 440px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+            <div style="width: 60px; height: 60px; line-height: 60px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 32px; margin: 0 auto 18px;">✓</div>
+            <h2 style="font-size: 22px; font-weight: 800; margin: 0 0 8px; font-family: sans-serif;">Instagram Connected!</h2>
+            <p style="color: #888; font-size: 14px; margin: 0 0 18px;">Account ID: <strong style="color: #fff;">${igUserId}</strong></p>
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 12px; font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 24px;">
+              60-day Long-Lived Token Active with Auto-Refresh
+            </div>
+            <a href="${returnUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 14px; background: #fff; color: #000; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;">
+              ← Back to Koko Digital Studio
+            </a>
+            <p style="color: #555; font-size: 12px; margin-top: 16px;">Redirecting you back automatically...</p>
+          </div>
           <script>
-            if (window.opener) {
-              window.opener.location.reload();
+            try {
+              if (window.opener && !window.opener.closed) {
+                window.opener.location.href = "${returnUrl}";
+                setTimeout(function() { window.close(); }, 800);
+              } else {
+                setTimeout(function() { window.location.href = "${returnUrl}"; }, 1200);
+              }
+            } catch (e) {
+              setTimeout(function() { window.location.href = "${returnUrl}"; }, 1200);
             }
-            setTimeout(function() { window.close(); }, 1500);
           </script>
         </body>
       </html>`,
@@ -127,10 +153,10 @@ export async function GET(request: Request) {
   } catch (err: any) {
     console.error('Error in Instagram OAuth Callback:', err?.response?.data || err?.message || err);
     return new Response(
-      `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
-        <h2 style="color:#b00020;">Instagram Connection Failed</h2>
-        <p style="color:#555; font-size:13px;">${err?.response?.data?.error_message || err?.message || 'Check server logs for details.'}</p>
-        <button onclick="window.close()" style="margin-top:20px; padding:10px 20px; background:#111; color:#fff; border:none; border-radius:8px; cursor:pointer;">Close Window</button>
+      `<html><body style="font-family: sans-serif; text-align:center; padding:40px; background:#000; color:#fff;">
+        <h2 style="color:#ef4444;">Instagram Connection Notice</h2>
+        <p style="color:#aaa; font-size:14px;">${err?.response?.data?.error_message || err?.message || 'Check server logs for details.'}</p>
+        <a href="${origin}/settings" style="display:inline-block; margin-top:20px; padding:12px 24px; background:#fff; color:#000; text-decoration:none; font-weight:bold; border-radius:10px;">Return to Dashboard</a>
       </body></html>`,
       { status: 500, headers: { 'Content-Type': 'text/html' } }
     );

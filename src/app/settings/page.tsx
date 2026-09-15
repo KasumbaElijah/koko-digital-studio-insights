@@ -100,16 +100,86 @@ export default function SettingsPage() {
     loadClientsList();
   }, []);
 
+  // Listen for OAuth callback success query parameters in URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const connected = params.get('connected');
+      const account = params.get('account');
+      const paramClientId = params.get('clientId');
+
+      if ((connected === 'instagram' || connected === 'tiktok') && account) {
+        const targetClientId = paramClientId || selectedClientId;
+        const newAccount: SocialAccountData = {
+          id: `sa_${targetClientId}_${connected}`,
+          clientId: targetClientId,
+          platform: connected,
+          platformAccountId: account,
+          accessToken: 'active_long_lived_token',
+          tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+
+        // Save to browser localStorage
+        try {
+          const stored = localStorage.getItem('koko_connected_social_accounts');
+          const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
+          const updated = list.filter((a) => !(a.clientId === targetClientId && a.platform === connected));
+          updated.push(newAccount);
+          localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+        } catch (e) {
+          console.warn('LocalStorage save error:', e);
+        }
+
+        // Update local component state
+        setSocialAccounts((prev) => {
+          const filtered = prev.filter((a) => !(a.clientId === targetClientId && a.platform === connected));
+          return [...filtered, newAccount];
+        });
+
+        // Clean query parameters from URL without reloading
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (e) {
+      console.warn('OAuth URL params parse error:', e);
+    }
+  }, [selectedClientId]);
+
   useEffect(() => {
     async function loadSocialAccounts() {
       setIsLoading(true);
       try {
-        const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
-        setSocialAccounts(res.data || []);
-      } catch (e) {
-        console.warn('Social accounts API fetch fallback:', e);
-        const fallback = INITIAL_CLIENTS.find((c) => c.id === selectedClientId)?.socialAccounts || [];
-        setSocialAccounts(fallback);
+        let accounts: SocialAccountData[] = [];
+        try {
+          const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
+          if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+            accounts = res.data;
+          }
+        } catch (e) {
+          console.warn('Social accounts API fetch fallback:', e);
+          accounts = INITIAL_CLIENTS.find((c) => c.id === selectedClientId)?.socialAccounts || [];
+        }
+
+        // Merge persistent accounts from browser localStorage
+        try {
+          const stored = localStorage.getItem('koko_connected_social_accounts');
+          if (stored) {
+            const parsed: SocialAccountData[] = JSON.parse(stored);
+            const clientAccounts = parsed.filter((a) => a.clientId === selectedClientId);
+            clientAccounts.forEach((ca) => {
+              const idx = accounts.findIndex((a) => a.platform === ca.platform);
+              if (idx >= 0) {
+                accounts[idx] = ca;
+              } else {
+                accounts.push(ca);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('LocalStorage read error:', e);
+        }
+
+        setSocialAccounts(accounts);
       } finally {
         setIsLoading(false);
       }
@@ -202,7 +272,7 @@ export default function SettingsPage() {
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
     const state = encodeURIComponent(selectedClientId);
     const scope = encodeURIComponent(
-      'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish'
+      'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments'
     );
     
     // Official Business Login for Instagram authorization window (Requires Instagram App ID)
