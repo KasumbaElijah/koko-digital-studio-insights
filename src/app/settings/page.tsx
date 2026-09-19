@@ -279,7 +279,7 @@ export default function SettingsPage() {
     );
     
     // Official Business Login for Instagram authorization window (Requires Instagram App ID)
-    const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&enable_fb_login=true`;
+    const oauthUrl = `https://api.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
 
     openCenteredPopup(oauthUrl, 'InstagramBusinessLogin');
   };
