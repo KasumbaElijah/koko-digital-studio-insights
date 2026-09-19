@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
-import { ClientData, MonthlyReportData } from '@/lib/types';
+import { ClientData, MonthlyReportData, MetaPageItem } from '@/lib/types';
 import { EMPTY_REPORT } from '@/lib/mockData';
 import { getFormatDistribution, getPlatformDistribution } from '@/lib/analytics';
 import { ControlBar } from '@/components/dashboard/ControlBar';
@@ -21,6 +21,10 @@ export default function DashboardPage() {
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [report, setReport] = useState<MonthlyReportData>(EMPTY_REPORT);
 
+  // Meta Pages selection state
+  const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
+  const [activePageId, setActivePageId] = useState<string>('');
+
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -37,6 +41,7 @@ export default function DashboardPage() {
     instagram?: boolean;
     tiktok?: boolean;
     instagramHandle?: string;
+    pageName?: string;
   }>({});
 
   // 1. Sync URL parameters on initial client mount
@@ -78,11 +83,35 @@ export default function DashboardPage() {
         const directIg = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`);
         const directAcct = localStorage.getItem(`koko_active_ig_account_${selectedClientId}`);
         const directUser = localStorage.getItem(`koko_active_ig_username_${selectedClientId}`);
+        const activePage = localStorage.getItem(`koko_active_page_id_${selectedClientId}`);
+        const activePageName = localStorage.getItem(`koko_active_page_name_${selectedClientId}`);
+
+        setActivePageId(activePage || '');
+
+        // Load cached Meta pages if available
+        try {
+          const storedPages = localStorage.getItem(`koko_meta_available_pages_${selectedClientId}`);
+          if (storedPages) {
+            const parsedPages = JSON.parse(storedPages);
+            if (Array.isArray(parsedPages)) {
+              setAvailablePages(parsedPages);
+            }
+          } else if (ig || directIg) {
+            // Lazy fetch from API in background
+            axios.get(`/api/social-accounts/meta-pages?clientId=${selectedClientId}`).then((res) => {
+              if (res.data?.success && Array.isArray(res.data?.pages)) {
+                setAvailablePages(res.data.pages);
+                localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+              }
+            }).catch(() => {});
+          }
+        } catch (e) {}
 
         setConnectedPlatforms({
           instagram: !!ig || !!directIg,
           tiktok: !!tt,
           instagramHandle: directUser ? `@${directUser}` : (ig?.platformAccountId || directAcct || undefined),
+          pageName: activePageName || (ig?.pageName || undefined),
         });
       } catch (e) {
         console.warn('Error reading connected social accounts:', e);
@@ -242,12 +271,13 @@ export default function DashboardPage() {
   }, [report, startDate, endDate]);
 
   // Handle dynamic social media API sync
-  const handleLiveSync = async () => {
+  const handleLiveSync = async (targetPageOverride?: string) => {
     if (!selectedClientId) return;
     setIsSyncing(true);
     try {
       let igToken = '';
       let igAccountId = '';
+      let pageId = targetPageOverride || activePageId || '';
       try {
         const stored = localStorage.getItem('koko_connected_social_accounts');
         if (stored) {
@@ -256,6 +286,7 @@ export default function DashboardPage() {
           if (ig) {
             igToken = ig.accessToken;
             igAccountId = ig.platformAccountId;
+            if (!pageId && ig.pageId) pageId = ig.pageId;
           }
         }
       } catch (e) {}
@@ -264,6 +295,9 @@ export default function DashboardPage() {
         try {
           igToken = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
           igAccountId = localStorage.getItem(`koko_active_ig_account_${selectedClientId}`) || '';
+          if (!pageId) {
+            pageId = localStorage.getItem(`koko_active_page_id_${selectedClientId}`) || '';
+          }
         } catch (e) {}
       }
 
@@ -273,6 +307,7 @@ export default function DashboardPage() {
         endDate,
         accessToken: igToken,
         platformAccountId: igAccountId,
+        pageId,
       });
 
       const updatedReport = res.data?.report || (res.data?.id ? res.data : null);
@@ -287,6 +322,65 @@ export default function DashboardPage() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Select which Page to get analytics from directly on Dashboard
+  const handleSelectPage = async (page: MetaPageItem) => {
+    if (!selectedClientId) return;
+    const instagramUsername = page.instagramBusinessAccount?.username;
+    const instagramId = page.instagramBusinessAccount?.id;
+    const displayAcct = instagramUsername ? `@${instagramUsername}` : (instagramId || page.name);
+
+    setActivePageId(page.id);
+    setConnectedPlatforms((prev) => ({
+      ...prev,
+      instagramHandle: displayAcct,
+      pageName: page.name,
+    }));
+
+    try {
+      localStorage.setItem(`koko_active_page_id_${selectedClientId}`, page.id);
+      localStorage.setItem(`koko_active_page_name_${selectedClientId}`, page.name);
+      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, instagramId || page.id);
+      if (instagramUsername) {
+        localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, instagramUsername);
+      }
+      if (page.access_token) {
+        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, page.access_token);
+      }
+
+      const stored = localStorage.getItem('koko_connected_social_accounts');
+      if (stored) {
+        const list = JSON.parse(stored);
+        const updated = list.filter((a: any) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
+        updated.push({
+          id: `sa_${selectedClientId}_instagram`,
+          clientId: selectedClientId,
+          platform: 'instagram',
+          platformAccountId: displayAcct,
+          accessToken: page.access_token || localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || 'active_token',
+          pageId: page.id,
+          pageName: page.name,
+          tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+        localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      }
+    } catch (e) {}
+
+    // Persist to backend
+    try {
+      await axios.post('/api/social-accounts/meta-pages', {
+        clientId: selectedClientId,
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: page.access_token,
+        instagramId,
+        instagramUsername,
+      });
+    } catch (err) {}
+
+    // Trigger immediate sync for that page
+    handleLiveSync(page.id);
   };
 
   // Auto-sync live metrics if Instagram is connected and report is empty
@@ -370,6 +464,9 @@ export default function DashboardPage() {
             isSyncing={isSyncing}
             onPrintPdf={handlePrintPdf}
             connectedPlatforms={connectedPlatforms}
+            availablePages={availablePages}
+            activePageId={activePageId}
+            onSelectPage={handleSelectPage}
           />
 
           {/* Mode Switcher Tabs */}

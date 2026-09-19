@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Calendar, RefreshCw, Download, Printer, CheckCircle2, AlertCircle } from 'lucide-react';
-import { ClientData } from '@/lib/types';
+import { ClientData, MetaPageItem } from '@/lib/types';
 
 interface ControlBarProps {
   clients: ClientData[];
@@ -19,7 +19,11 @@ interface ControlBarProps {
     instagram?: boolean;
     tiktok?: boolean;
     instagramHandle?: string;
+    pageName?: string;
   };
+  availablePages?: MetaPageItem[];
+  activePageId?: string;
+  onSelectPage?: (page: MetaPageItem) => void;
 }
 
 export const ControlBar: React.FC<ControlBarProps> = ({
@@ -33,6 +37,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   isSyncing,
   onPrintPdf,
   connectedPlatforms,
+  availablePages,
+  activePageId,
+  onSelectPage,
 }) => {
   const setLast30Days = () => {
     const end = new Date();
@@ -75,10 +82,38 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             </Link>
           )}
           {connectedPlatforms?.instagram ? (
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Instagram Live {connectedPlatforms.instagramHandle ? `(${connectedPlatforms.instagramHandle})` : 'Connected'}
-            </span>
+            <div className="flex items-center gap-2">
+              {availablePages && availablePages.length > 1 ? (
+                <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs px-2.5 py-1 rounded-xl border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-700">Page:</span>
+                  <select
+                    value={activePageId || (availablePages[0]?.id ?? '')}
+                    onChange={(e) => {
+                      const found = availablePages.find((p) => p.id === e.target.value);
+                      if (found && onSelectPage) {
+                        onSelectPage(found);
+                      }
+                    }}
+                    className="bg-white border border-emerald-300 font-bold text-emerald-950 text-xs rounded-lg px-2 py-0.5 outline-none cursor-pointer hover:border-emerald-400 focus:ring-1 focus:ring-emerald-500 max-w-[150px] sm:max-w-[200px] truncate"
+                  >
+                    {availablePages.map((p) => {
+                      const igUser = p.instagramBusinessAccount?.username;
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {igUser ? `(@${igUser})` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Instagram Live {connectedPlatforms.pageName ? `(${connectedPlatforms.pageName})` : connectedPlatforms.instagramHandle ? `(${connectedPlatforms.instagramHandle})` : 'Connected'}
+                </span>
+              )}
+            </div>
           ) : (
             <Link
               href="/settings"

@@ -23,7 +23,8 @@ export async function fetchInstagramMetrics(
   platformAccountId: string,
   accessToken: string,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  targetPageId?: string
 ): Promise<InstagramMetricResult> {
   const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === 'true' || !accessToken || accessToken.startsWith('mock_');
 
@@ -109,7 +110,24 @@ export async function fetchInstagramMetrics(
         });
 
         const pages = meAccountsRes.data?.data || [];
-        const linkedPage = pages.find((p: any) => p.instagram_business_account?.id) || pages[0];
+        let linkedPage = null;
+
+        if (targetPageId) {
+          linkedPage = pages.find((p: any) => p.id === targetPageId || p.instagram_business_account?.id === targetPageId);
+        }
+
+        if (!linkedPage && cleanAccountId) {
+          linkedPage = pages.find((p: any) =>
+            p.id === cleanAccountId ||
+            p.instagram_business_account?.id === cleanAccountId ||
+            p.instagram_business_account?.username?.toLowerCase() === cleanAccountId.toLowerCase()
+          );
+        }
+
+        if (!linkedPage) {
+          linkedPage = pages.find((p: any) => p.instagram_business_account?.id) || pages[0];
+        }
+
         if (linkedPage?.instagram_business_account?.id) {
           targetIgId = linkedPage.instagram_business_account.id;
           if (linkedPage.access_token) {
@@ -117,6 +135,11 @@ export async function fetchInstagramMetrics(
           }
           if (linkedPage.instagram_business_account.followers_count) {
             followersGrowth = linkedPage.instagram_business_account.followers_count;
+          }
+        } else if (linkedPage?.id) {
+          targetIgId = linkedPage.id;
+          if (linkedPage.access_token) {
+            targetToken = linkedPage.access_token;
           }
         }
       } catch (accErr) {}

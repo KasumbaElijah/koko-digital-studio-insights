@@ -13,8 +13,24 @@ export interface SocialAccountData {
   platform: 'instagram' | 'tiktok';
   platformAccountId: string;
   accessToken: string;
+  pageId?: string | null;
+  pageName?: string | null;
   refreshToken?: string | null;
   tokenExpiresAt?: string | null;
+}
+
+export interface MetaPageItem {
+  id: string;
+  name: string;
+  category?: string;
+  access_token?: string;
+  instagramBusinessAccount?: {
+    id: string;
+    username?: string;
+    name?: string;
+    followersCount?: number;
+    profilePictureUrl?: string;
+  } | null;
 }
 
 export interface ContentPostData {

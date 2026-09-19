@@ -106,38 +106,66 @@ export async function GET(request: Request) {
     }
 
     // Retrieve linked Instagram accounts or managed Pages
+    let discoveredPages: any[] = [];
+    let selectedPageId = '';
+    let selectedPageName = '';
+    let igUsername = '';
+
     try {
       const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
         params: {
-          fields: 'name,instagram_business_account',
+          fields: 'id,name,category,access_token,instagram_business_account{id,username,name,followers_count}',
           access_token: accessToken,
         },
       });
 
       const pages = meAccountsRes.data?.data || [];
-      const linkedIg = pages.find((p: any) => p.instagram_business_account?.id);
-      if (linkedIg) {
-        igAccountId = linkedIg.instagram_business_account.id;
-      } else if (pages.length > 0 && pages[0]?.id) {
-        igAccountId = pages[0].id;
+      discoveredPages = pages.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        access_token: p.access_token,
+        instagramBusinessAccount: p.instagram_business_account
+          ? {
+              id: p.instagram_business_account.id,
+              username: p.instagram_business_account.username,
+              name: p.instagram_business_account.name,
+              followersCount: p.instagram_business_account.followers_count,
+            }
+          : null,
+      }));
+
+      const linkedIgPage = pages.find((p: any) => p.instagram_business_account?.id) || pages[0];
+      if (linkedIgPage) {
+        selectedPageId = linkedIgPage.id;
+        selectedPageName = linkedIgPage.name || '';
+        if (linkedIgPage.instagram_business_account?.id) {
+          igAccountId = linkedIgPage.instagram_business_account.id;
+          if (linkedIgPage.instagram_business_account.username) {
+            igUsername = linkedIgPage.instagram_business_account.username;
+          }
+        } else if (linkedIgPage.id) {
+          igAccountId = linkedIgPage.id;
+        }
       }
     } catch (accountsErr) {
       console.warn('me/accounts query notice:', accountsErr);
     }
 
-    let igUsername = '';
-    try {
-      const igProfileRes = await axios.get(`https://graph.facebook.com/v19.0/${igAccountId}`, {
-        params: {
-          fields: 'id,username,name',
-          access_token: accessToken,
-        },
-      });
-      if (igProfileRes.data?.username) {
-        igUsername = igProfileRes.data.username;
+    if (!igUsername && igAccountId) {
+      try {
+        const igProfileRes = await axios.get(`https://graph.facebook.com/v19.0/${igAccountId}`, {
+          params: {
+            fields: 'id,username,name',
+            access_token: accessToken,
+          },
+        });
+        if (igProfileRes.data?.username) {
+          igUsername = igProfileRes.data.username;
+        }
+      } catch (profileErr) {
+        console.warn('Profile fetch notice:', profileErr);
       }
-    } catch (profileErr) {
-      console.warn('Profile fetch notice:', profileErr);
     }
 
     try {
@@ -161,8 +189,9 @@ export async function GET(request: Request) {
       console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
     }
 
-    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igAccountId))}&username=${encodeURIComponent(igUsername)}&token=${encodeURIComponent(accessToken)}&clientId=${encodeURIComponent(clientId)}`;
-    const dashboardUrl = `${origin}/?connected=instagram&clientId=${encodeURIComponent(clientId)}`;
+    const discoveredPagesJson = JSON.stringify(discoveredPages);
+    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igAccountId))}&username=${encodeURIComponent(igUsername)}&token=${encodeURIComponent(accessToken)}&clientId=${encodeURIComponent(clientId)}&pageId=${encodeURIComponent(selectedPageId)}&pageName=${encodeURIComponent(selectedPageName)}`;
+    const dashboardUrl = `${origin}/?connected=instagram&clientId=${encodeURIComponent(clientId)}&pageId=${encodeURIComponent(selectedPageId)}`;
 
     return new Response(
       `<!DOCTYPE html>
@@ -179,10 +208,24 @@ export async function GET(request: Request) {
             <p style="color: #aaa; font-size: 14px; margin: 0 0 4px;">
               ${igUsername ? `<span style="color: #10b981; font-weight: 700; font-size: 16px;">@${igUsername}</span>` : ''}
             </p>
+            ${selectedPageName ? `<p style="color: #888; font-size: 13px; margin: 0 0 4px; font-weight: 500;">Page: ${selectedPageName}</p>` : ''}
             <p style="color: #666; font-size: 12px; margin: 0 0 18px; font-family: monospace;">Account ID: ${igAccountId}</p>
+            
+            ${discoveredPages.length > 1 ? `
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 14px; padding: 12px; margin-bottom: 20px; text-align: left;">
+              <div style="font-size: 11px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+                ✓ ${discoveredPages.length} Pages Detected
+              </div>
+              <p style="color: #aaa; font-size: 12px; margin: 0; line-height: 1.4;">
+                Active: <strong style="color: #fff;">${selectedPageName || 'Primary Page'}</strong>. You can switch pages anytime directly on the Dashboard or in Settings.
+              </p>
+            </div>
+            ` : `
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 12px; font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 24px;">
               60-day Long-Lived Token Active with Auto-Refresh
             </div>
+            `}
+
             <div style="display: flex; flex-direction: column; gap: 10px;">
               <a id="btn-dash" href="${dashboardUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 14px; background: #10b981; color: #000; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;">
                 View Analytics Dashboard →
@@ -196,6 +239,13 @@ export async function GET(request: Request) {
           <script>
             // 1. Save directly to domain localStorage
             try {
+              var pages = ${discoveredPagesJson};
+              localStorage.setItem('koko_meta_available_pages_${clientId}', JSON.stringify(pages));
+              if ('${selectedPageId}') {
+                localStorage.setItem('koko_active_page_id_${clientId}', '${selectedPageId}');
+                localStorage.setItem('koko_active_page_name_${clientId}', '${selectedPageName.replace(/'/g, "\\'")}');
+              }
+
               var stored = localStorage.getItem('koko_connected_social_accounts');
               var list = stored ? JSON.parse(stored) : [];
               var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
@@ -206,6 +256,8 @@ export async function GET(request: Request) {
                 platform: 'instagram',
                 platformAccountId: displayAcct,
                 accessToken: '${accessToken}',
+                pageId: '${selectedPageId}',
+                pageName: '${selectedPageName.replace(/'/g, "\\'")}',
                 tokenExpiresAt: new Date(Date.now() + 60 * 86400 * 1000).toISOString()
               });
               localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
@@ -227,7 +279,10 @@ export async function GET(request: Request) {
                   accountId: '${igAccountId}',
                   username: '${igUsername}',
                   accessToken: '${accessToken}',
-                  clientId: '${clientId}'
+                  clientId: '${clientId}',
+                  pageId: '${selectedPageId}',
+                  pageName: '${selectedPageName.replace(/'/g, "\\'")}',
+                  pages: pages
                 }, '*');
                 window.opener.location.href = "${returnUrl}";
               }

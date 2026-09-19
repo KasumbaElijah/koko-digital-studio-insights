@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     let endDateStr = defaultEnd.toISOString().split('T')[0];
     let bodyAccessToken = '';
     let bodyPlatformAccountId = '';
+    let pageId = '';
 
     try {
       const body = await request.json();
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
       endDateStr = body.endDate || endDateStr;
       bodyAccessToken = body.accessToken || '';
       bodyPlatformAccountId = body.platformAccountId || '';
+      pageId = body.pageId || '';
     } catch (e) {
       console.warn('Body parse warning on static export:', e);
     }
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
           igPlatformAccountId,
           igToken,
           startDate,
-          endDate
+          endDate,
+          pageId
         );
       } catch (e) {
         console.warn('Instagram API sync fallback:', e);

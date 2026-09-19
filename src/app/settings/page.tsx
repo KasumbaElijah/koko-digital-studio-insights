@@ -20,7 +20,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { INITIAL_CLIENTS } from '@/lib/mockData';
-import { ClientData, SocialAccountData } from '@/lib/types';
+import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -28,6 +28,11 @@ export default function SettingsPage() {
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Meta Pages selection state
+  const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
+  const [isFetchingPages, setIsFetchingPages] = useState(false);
+  const [activePageId, setActivePageId] = useState<string>('');
 
   // Card Design States matching familiar mobile login UI
   const [tiktokTab, setTiktokTab] = useState<'email' | 'phone'>('email');
@@ -244,12 +249,105 @@ export default function SettingsPage() {
         const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === platform));
         localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
       }
-      localStorage.removeItem(`koko_active_ig_token_${selectedClientId}`);
-      localStorage.removeItem(`koko_active_ig_account_${selectedClientId}`);
-      localStorage.removeItem(`koko_active_ig_username_${selectedClientId}`);
+      if (platform === 'instagram') {
+        localStorage.removeItem(`koko_active_ig_token_${selectedClientId}`);
+        localStorage.removeItem(`koko_active_ig_account_${selectedClientId}`);
+        localStorage.removeItem(`koko_active_ig_username_${selectedClientId}`);
+        localStorage.removeItem(`koko_meta_available_pages_${selectedClientId}`);
+        localStorage.removeItem(`koko_active_page_id_${selectedClientId}`);
+        localStorage.removeItem(`koko_active_page_name_${selectedClientId}`);
+        setAvailablePages([]);
+        setActivePageId('');
+      }
     } catch (e) {}
 
     setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
+  };
+
+  // Fetch / Refresh available Meta Facebook Pages & Instagram accounts
+  const fetchAvailablePages = async () => {
+    if (!selectedClientId) return;
+    setIsFetchingPages(true);
+    try {
+      let token = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
+      if (!token) {
+        const stored = localStorage.getItem('koko_connected_social_accounts');
+        if (stored) {
+          const list: SocialAccountData[] = JSON.parse(stored);
+          const ig = list.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+          if (ig) token = ig.accessToken;
+        }
+      }
+
+      const res = await axios.get(`/api/social-accounts/meta-pages?clientId=${selectedClientId}${token ? `&accessToken=${encodeURIComponent(token)}` : ''}`);
+      if (res.data?.success && Array.isArray(res.data?.pages)) {
+        setAvailablePages(res.data.pages);
+        localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+      }
+    } catch (err) {
+      console.warn('Notice fetching meta pages:', err);
+    } finally {
+      setIsFetchingPages(false);
+    }
+  };
+
+  // Select which Page to get analytics from
+  const handleSelectPage = async (page: MetaPageItem) => {
+    if (!selectedClientId) return;
+    const instagramUsername = page.instagramBusinessAccount?.username;
+    const instagramId = page.instagramBusinessAccount?.id;
+    const displayAcct = instagramUsername ? `@${instagramUsername}` : (instagramId || page.name);
+
+    setActivePageId(page.id);
+
+    try {
+      const stored = localStorage.getItem('koko_connected_social_accounts');
+      const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
+      const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
+      const activeToken = page.access_token || localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || 'active_token';
+
+      const newAccount: SocialAccountData = {
+        id: `sa_${selectedClientId}_instagram`,
+        clientId: selectedClientId,
+        platform: 'instagram',
+        platformAccountId: displayAcct,
+        accessToken: activeToken,
+        pageId: page.id,
+        pageName: page.name,
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+      updated.push(newAccount);
+      localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      localStorage.setItem(`koko_active_page_id_${selectedClientId}`, page.id);
+      localStorage.setItem(`koko_active_page_name_${selectedClientId}`, page.name);
+      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, instagramId || page.id);
+      if (instagramUsername) {
+        localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, instagramUsername);
+      }
+      if (page.access_token) {
+        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, page.access_token);
+      }
+
+      setSocialAccounts((prev) => {
+        const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
+        return [...filtered, newAccount];
+      });
+    } catch (e) {
+      console.warn('LocalStorage save error on page select:', e);
+    }
+
+    try {
+      await axios.post('/api/social-accounts/meta-pages', {
+        clientId: selectedClientId,
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: page.access_token,
+        instagramId,
+        instagramUsername,
+      });
+    } catch (apiErr) {
+      console.warn('API meta-pages switch notice:', apiErr);
+    }
   };
 
   useEffect(() => {
@@ -291,6 +389,21 @@ export default function SettingsPage() {
         }
 
         setSocialAccounts(accounts);
+
+        // Load active page details from localStorage if present
+        try {
+          const storedPages = localStorage.getItem(`koko_meta_available_pages_${selectedClientId}`);
+          if (storedPages) {
+            const parsedPages = JSON.parse(storedPages);
+            if (Array.isArray(parsedPages)) {
+              setAvailablePages(parsedPages);
+            }
+          }
+          const storedActivePage = localStorage.getItem(`koko_active_page_id_${selectedClientId}`);
+          if (storedActivePage) {
+            setActivePageId(storedActivePage);
+          }
+        } catch (e) {}
       } finally {
         setIsLoading(false);
       }
@@ -659,6 +772,98 @@ export default function SettingsPage() {
                   <p className="text-[11px] text-neutral-400 mt-1">
                     60-day Long-Lived Token Active • Auto-Refreshing
                   </p>
+                </div>
+
+                {/* Page / Channel Selection Section */}
+                <div className="pt-3 border-t border-emerald-500/20 text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-neutral-300 uppercase tracking-wider">
+                      Source Page & Channel {availablePages.length > 0 ? `(${availablePages.length})` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={fetchAvailablePages}
+                      disabled={isFetchingPages}
+                      className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                      {isFetchingPages ? 'Scanning...' : 'Scan Pages'}
+                    </button>
+                  </div>
+
+                  {availablePages.length > 0 ? (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {availablePages.map((page) => {
+                        const isCurrentActive =
+                          activePageId === page.id ||
+                          igAccount.pageId === page.id ||
+                          igAccount.platformAccountId === `@${page.instagramBusinessAccount?.username}` ||
+                          igAccount.platformAccountId === page.instagramBusinessAccount?.id ||
+                          igAccount.platformAccountId === page.id;
+                        const igUser = page.instagramBusinessAccount?.username;
+                        const followers = page.instagramBusinessAccount?.followersCount;
+
+                        return (
+                          <div
+                            key={page.id}
+                            onClick={() => handleSelectPage(page)}
+                            className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                              isCurrentActive
+                                ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm ring-1 ring-emerald-500/30'
+                                : 'bg-black/40 border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-850'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold truncate">{page.name}</span>
+                                {isCurrentActive && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                                {igUser ? (
+                                  <span className="text-emerald-400/90 font-medium">
+                                    @{igUser} {followers != null ? `• ${followers.toLocaleString()} followers` : ''}
+                                  </span>
+                                ) : (
+                                  <span className="text-neutral-500">Facebook Page</span>
+                                )}
+                              </p>
+                            </div>
+                            <div>
+                              {isCurrentActive ? (
+                                <span className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xs font-black">
+                                  ✓
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
+                                >
+                                  Select
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-xs text-neutral-400">
+                      <p>Active channel: <strong className="text-white">{igAccount.platformAccountId}</strong>.</p>
+                      <button
+                        type="button"
+                        onClick={fetchAvailablePages}
+                        disabled={isFetchingPages}
+                        className="mt-1.5 text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                        {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 space-y-2.5">
