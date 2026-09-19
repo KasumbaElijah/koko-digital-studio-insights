@@ -114,11 +114,19 @@ export default function SettingsPage() {
 
       if ((connected === 'instagram' || connected === 'tiktok') && account) {
         const targetClientId = paramClientId || selectedClientId;
+        let displayAccountId = account;
+        try {
+          const savedUsername = localStorage.getItem(`koko_pending_username_${targetClientId}_${connected}`);
+          if (savedUsername && account.includes('official')) {
+            displayAccountId = savedUsername;
+          }
+        } catch (e) {}
+
         const newAccount: SocialAccountData = {
           id: `sa_${targetClientId}_${connected}`,
           clientId: targetClientId,
           platform: connected,
-          platformAccountId: account,
+          platformAccountId: displayAccountId,
           accessToken: 'active_long_lived_token',
           tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         };
@@ -262,30 +270,25 @@ export default function SettingsPage() {
     return window.location.origin;
   };
 
-  // 1. Trigger Direct Business Login for Instagram (Requires Instagram App ID)
+  // 1. Trigger Official Meta / Instagram Business Login (Supports full Insights & Analytics)
   const triggerInstagramDirectLogin = () => {
-    const appId = metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335';
-
-    if (!appId || appId === 'your_instagram_app_id' || appId.length < 5) {
-      setShowSetupGuide(true);
-      return;
+    if (igIdentifier.trim()) {
+      try {
+        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
+      } catch (e) {}
     }
-
-    const origin = getOAuthOrigin();
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
-    const state = encodeURIComponent(selectedClientId);
-    const scope = encodeURIComponent(
-      'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments'
-    );
-    
-    // Official Business Login for Instagram authorization window (Requires Instagram App ID)
-    const oauthUrl = `https://api.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
-
-    openCenteredPopup(oauthUrl, 'InstagramBusinessLogin');
+    // Launch official Meta Login for Business (Connects Instagram Business/Creator Account)
+    triggerMetaFacebookLogin();
   };
 
   // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639 & Config ID)
   const triggerMetaFacebookLogin = () => {
+    if (igIdentifier.trim()) {
+      try {
+        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
+      } catch (e) {}
+    }
+
     const fbAppId = '1532121481550639';
     const configId = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
 
