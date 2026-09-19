@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Calendar, RefreshCw, Download, Printer, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
+import { Calendar, RefreshCw, Download, Printer, CheckCircle2, AlertCircle } from 'lucide-react';
 import { ClientData } from '@/lib/types';
 
 interface ControlBarProps {
@@ -14,6 +15,11 @@ interface ControlBarProps {
   onSync: () => void;
   isSyncing: boolean;
   onPrintPdf: () => void;
+  connectedPlatforms?: {
+    instagram?: boolean;
+    tiktok?: boolean;
+    instagramHandle?: string;
+  };
 }
 
 export const ControlBar: React.FC<ControlBarProps> = ({
@@ -26,6 +32,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onSync,
   isSyncing,
   onPrintPdf,
+  connectedPlatforms,
 }) => {
   const setJunePreset = () => {
     onDateChange('2026-06-11', '2026-07-10');
@@ -55,10 +62,20 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               </option>
             ))}
           </select>
-          <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Mock API Active
-          </span>
+          {connectedPlatforms?.instagram ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Instagram Live {connectedPlatforms.instagramHandle ? `(${connectedPlatforms.instagramHandle})` : 'Connected'}
+            </span>
+          ) : (
+            <Link
+              href="/settings"
+              className="hidden sm:inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-medium border border-neutral-200 transition-colors"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-neutral-500" />
+              Connect Channels in Settings
+            </Link>
+          )}
         </div>
 
         {/* Date Filter & Presets */}

@@ -25,6 +25,35 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdf-preview'>('dashboard');
+  const [connectedPlatforms, setConnectedPlatforms] = useState<{
+    instagram?: boolean;
+    tiktok?: boolean;
+    instagramHandle?: string;
+  }>({});
+
+  // Detect connected platforms from localStorage for active client
+  useEffect(() => {
+    function loadConnectedState() {
+      try {
+        const stored = localStorage.getItem('koko_connected_social_accounts');
+        if (stored) {
+          const accounts: any[] = JSON.parse(stored);
+          const ig = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+          const tt = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
+          setConnectedPlatforms({
+            instagram: !!ig,
+            tiktok: !!tt,
+            instagramHandle: ig?.platformAccountId,
+          });
+        } else {
+          setConnectedPlatforms({});
+        }
+      } catch (e) {
+        console.warn('Error reading connected social accounts:', e);
+      }
+    }
+    loadConnectedState();
+  }, [selectedClientId]);
 
   // Load client list on mount
   useEffect(() => {
@@ -61,11 +90,24 @@ export default function DashboardPage() {
     async function fetchReport() {
       setIsLoading(true);
       try {
+        // Read cached report from localStorage first for instant load
+        try {
+          const cached = localStorage.getItem(`koko_report_${selectedClientId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && (parsed.id || parsed.igViews)) {
+              setReport(parsed);
+            }
+          }
+        } catch (e) {}
+
         const res = await axios.get(`/api/reports?clientId=${selectedClientId}&startDate=${startDate}&endDate=${endDate}`);
-        if (res.data && res.data.id) {
-          setReport(res.data);
-        } else {
-          setReport(INITIAL_REPORTS[selectedClientId] || INITIAL_REPORTS['client-bulungi-town']);
+        const reportData = Array.isArray(res.data) ? res.data[0] : res.data;
+        if (reportData && (reportData.igViews > 0 || !report.igViews)) {
+          setReport(reportData);
+          try {
+            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(reportData));
+          } catch (e) {}
         }
       } catch (err) {
         console.warn('API fetch report error, using mock fallback:', err);
@@ -83,13 +125,34 @@ export default function DashboardPage() {
   const handleLiveSync = async () => {
     setIsSyncing(true);
     try {
+      let igToken = '';
+      let igAccountId = '';
+      try {
+        const stored = localStorage.getItem('koko_connected_social_accounts');
+        if (stored) {
+          const accounts: any[] = JSON.parse(stored);
+          const ig = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+          if (ig) {
+            igToken = ig.accessToken;
+            igAccountId = ig.platformAccountId;
+          }
+        }
+      } catch (e) {}
+
       const res = await axios.post('/api/sync', {
         clientId: selectedClientId,
         startDate,
         endDate,
+        accessToken: igToken,
+        platformAccountId: igAccountId,
       });
-      if (res.data && res.data.id) {
-        setReport(res.data);
+
+      const updatedReport = res.data?.report || (res.data?.id ? res.data : null);
+      if (updatedReport) {
+        setReport(updatedReport);
+        try {
+          localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
+        } catch (e) {}
       }
     } catch (err) {
       console.error('Error during social API sync:', err);
@@ -97,6 +160,13 @@ export default function DashboardPage() {
       setIsSyncing(false);
     }
   };
+
+  // Auto-sync live metrics if Instagram is connected and report is empty
+  useEffect(() => {
+    if (connectedPlatforms.instagram && (Number(report.igViews) === 0 || report.id === 'report-empty-state')) {
+      handleLiveSync();
+    }
+  }, [connectedPlatforms.instagram]);
 
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {
@@ -150,6 +220,7 @@ export default function DashboardPage() {
           onSync={handleLiveSync}
           isSyncing={isSyncing}
           onPrintPdf={handlePrintPdf}
+          connectedPlatforms={connectedPlatforms}
         />
 
         {/* Mode Switcher Tabs */}

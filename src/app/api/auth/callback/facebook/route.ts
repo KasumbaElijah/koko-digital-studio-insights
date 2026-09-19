@@ -125,11 +125,26 @@ export async function GET(request: Request) {
       console.warn('me/accounts query notice:', accountsErr);
     }
 
+    let igUsername = '';
+    try {
+      const igProfileRes = await axios.get(`https://graph.facebook.com/v19.0/${igAccountId}`, {
+        params: {
+          fields: 'id,username,name',
+          access_token: accessToken,
+        },
+      });
+      if (igProfileRes.data?.username) {
+        igUsername = igProfileRes.data.username;
+      }
+    } catch (profileErr) {
+      console.warn('Profile fetch notice:', profileErr);
+    }
+
     try {
       await prisma.socialAccount.upsert({
         where: { id: `sa_${clientId}_instagram` },
         update: {
-          platformAccountId: igAccountId,
+          platformAccountId: igUsername ? `@${igUsername}` : igAccountId,
           accessToken,
           tokenExpiresAt: expiresAt,
         },
@@ -137,7 +152,7 @@ export async function GET(request: Request) {
           id: `sa_${clientId}_instagram`,
           clientId,
           platform: 'instagram',
-          platformAccountId: igAccountId,
+          platformAccountId: igUsername ? `@${igUsername}` : igAccountId,
           accessToken,
           tokenExpiresAt: expiresAt,
         },
@@ -146,7 +161,8 @@ export async function GET(request: Request) {
       console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
     }
 
-    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igAccountId))}&clientId=${encodeURIComponent(clientId)}`;
+    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igAccountId))}&username=${encodeURIComponent(igUsername)}&token=${encodeURIComponent(accessToken)}&clientId=${encodeURIComponent(clientId)}`;
+    const dashboardUrl = `${origin}/?connected=instagram&clientId=${encodeURIComponent(clientId)}`;
 
     return new Response(
       `<!DOCTYPE html>
@@ -157,33 +173,106 @@ export async function GET(request: Request) {
           <title>Meta Instagram Connected</title>
         </head>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
-          <div style="max-width: 440px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
-            <div style="width: 60px; height: 60px; line-height: 60px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 32px; margin: 0 auto 18px;">✓</div>
-            <h2 style="font-size: 22px; font-weight: 800; margin: 0 0 8px; font-family: sans-serif;">Instagram Connected!</h2>
-            <p style="color: #888; font-size: 14px; margin: 0 0 18px;">Account ID: <strong style="color: #fff;">${igAccountId}</strong></p>
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 12px; font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 24px;">
+          <div style="max-width: 460px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 28px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+            <div style="width: 64px; height: 64px; line-height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 32px; margin: 0 auto 18px; border: 1px solid rgba(16, 185, 129, 0.3);">✓</div>
+            <h2 style="font-size: 24px; font-weight: 800; margin: 0 0 6px; font-family: sans-serif; letter-spacing: -0.02em;">Instagram Connected!</h2>
+            <p style="color: #aaa; font-size: 14px; margin: 0 0 4px;">
+              ${igUsername ? `<span style="color: #10b981; font-weight: 700; font-size: 16px;">@${igUsername}</span>` : ''}
+            </p>
+            <p style="color: #666; font-size: 12px; margin: 0 0 18px; font-family: monospace;">Account ID: ${igAccountId}</p>
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 12px; font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 24px;">
               60-day Long-Lived Token Active with Auto-Refresh
             </div>
-            <a href="${returnUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 14px; background: #fff; color: #000; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;">
-              ← Back to Koko Digital Studio
-            </a>
-            <p style="color: #555; font-size: 12px; margin-top: 16px;">Redirecting you back automatically...</p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <a id="btn-dash" href="${dashboardUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 14px; background: #10b981; color: #000; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;">
+                View Analytics Dashboard →
+              </a>
+              <a id="btn-settings" href="${returnUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 12px; background: #222; color: #ddd; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid #333;">
+                Return to Settings
+              </a>
+            </div>
+            <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">5</strong> seconds...</p>
           </div>
           <script>
+            // 1. Save directly to domain localStorage
             try {
-              if (window.opener && !window.opener.closed) {
-                window.opener.location.href = "${returnUrl}";
-                setTimeout(function() { window.close(); }, 800);
-              } else {
-                setTimeout(function() { window.location.href = "${returnUrl}"; }, 1200);
+              var stored = localStorage.getItem('koko_connected_social_accounts');
+              var list = stored ? JSON.parse(stored) : [];
+              var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
+              var displayAcct = '${igUsername ? '@' + igUsername : igAccountId}';
+              updated.push({
+                id: 'sa_${clientId}_instagram',
+                clientId: '${clientId}',
+                platform: 'instagram',
+                platformAccountId: displayAcct,
+                accessToken: '${accessToken}',
+                tokenExpiresAt: new Date(Date.now() + 60 * 86400 * 1000).toISOString()
+              });
+              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+              localStorage.setItem('koko_active_ig_token_${clientId}', '${accessToken}');
+              localStorage.setItem('koko_active_ig_account_${clientId}', '${igAccountId}');
+              if ('${igUsername}') {
+                localStorage.setItem('koko_active_ig_username_${clientId}', '${igUsername}');
               }
             } catch (e) {
-              setTimeout(function() { window.location.href = "${returnUrl}"; }, 1200);
+              console.warn('LocalStorage error in callback popup:', e);
             }
+
+            // 2. Notify parent window via postMessage
+            try {
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({
+                  type: 'META_AUTH_SUCCESS',
+                  platform: 'instagram',
+                  accountId: '${igAccountId}',
+                  username: '${igUsername}',
+                  accessToken: '${accessToken}',
+                  clientId: '${clientId}'
+                }, '*');
+                window.opener.location.href = "${returnUrl}";
+              }
+            } catch (e) {
+              console.warn('postMessage notice:', e);
+            }
+
+            // Handle direct clicks to route opener or self
+            document.getElementById('btn-dash').addEventListener('click', function(e) {
+              if (window.opener && !window.opener.closed) {
+                window.opener.location.href = "${dashboardUrl}";
+                window.close();
+              }
+            });
+            document.getElementById('btn-settings').addEventListener('click', function(e) {
+              if (window.opener && !window.opener.closed) {
+                window.opener.location.href = "${returnUrl}";
+                window.close();
+              }
+            });
+
+            // 3. Gentle countdown timer
+            var remaining = 5;
+            var timerEl = document.getElementById('timer');
+            var interval = setInterval(function() {
+              remaining--;
+              if (timerEl) timerEl.innerText = remaining;
+              if (remaining <= 0) {
+                clearInterval(interval);
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                } else {
+                  window.location.href = "${returnUrl}";
+                }
+              }
+            }, 1000);
           </script>
         </body>
       </html>`,
-      { headers: { 'Content-Type': 'text/html' } }
+      { 
+        headers: { 
+          'Content-Type': 'text/html',
+          'Set-Cookie': `koko_ig_token=${accessToken}; Path=/; SameSite=Lax; Max-Age=5184000`
+        } 
+      }
     );
   } catch (err: any) {
     console.error('Error in Facebook OAuth Callback:', err);

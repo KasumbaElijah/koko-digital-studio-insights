@@ -106,6 +106,46 @@ export default function SettingsPage() {
     loadClientsList();
   }, []);
 
+  // Listen for real-time postMessage from popup OAuth window
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data && event.data.type === 'META_AUTH_SUCCESS') {
+        const { accountId, username, accessToken, clientId } = event.data;
+        const targetClientId = clientId || selectedClientId;
+        const displayAcct = username ? `@${username}` : accountId;
+
+        const newAccount: SocialAccountData = {
+          id: `sa_${targetClientId}_instagram`,
+          clientId: targetClientId,
+          platform: 'instagram',
+          platformAccountId: displayAcct,
+          accessToken: accessToken || 'active_long_lived_token',
+          tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+
+        try {
+          const stored = localStorage.getItem('koko_connected_social_accounts');
+          const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
+          const updated = list.filter((a) => !(a.clientId === targetClientId && a.platform === 'instagram'));
+          updated.push(newAccount);
+          localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+          localStorage.setItem(`koko_active_ig_token_${targetClientId}`, accessToken || '');
+          localStorage.setItem(`koko_active_ig_account_${targetClientId}`, accountId || '');
+          if (username) {
+            localStorage.setItem(`koko_active_ig_username_${targetClientId}`, username);
+          }
+        } catch (e) {}
+
+        setSocialAccounts((prev) => {
+          const filtered = prev.filter((a) => !(a.clientId === targetClientId && a.platform === 'instagram'));
+          return [...filtered, newAccount];
+        });
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [selectedClientId]);
+
   // Listen for OAuth callback success query parameters in URL
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -113,11 +153,13 @@ export default function SettingsPage() {
       const params = new URLSearchParams(window.location.search);
       const connected = params.get('connected');
       const account = params.get('account');
+      const username = params.get('username');
+      const token = params.get('token');
       const paramClientId = params.get('clientId');
 
       if ((connected === 'instagram' || connected === 'tiktok') && account) {
         const targetClientId = paramClientId || selectedClientId;
-        let displayAccountId = account;
+        let displayAccountId = username ? `@${username}` : account;
         try {
           const savedUsername = localStorage.getItem(`koko_pending_username_${targetClientId}_${connected}`);
           if (savedUsername && account.includes('official')) {
@@ -130,7 +172,7 @@ export default function SettingsPage() {
           clientId: targetClientId,
           platform: connected,
           platformAccountId: displayAccountId,
-          accessToken: 'active_long_lived_token',
+          accessToken: token || 'active_long_lived_token',
           tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         };
 
@@ -141,6 +183,13 @@ export default function SettingsPage() {
           const updated = list.filter((a) => !(a.clientId === targetClientId && a.platform === connected));
           updated.push(newAccount);
           localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+          if (token && connected === 'instagram') {
+            localStorage.setItem(`koko_active_ig_token_${targetClientId}`, token);
+            localStorage.setItem(`koko_active_ig_account_${targetClientId}`, account);
+            if (username) {
+              localStorage.setItem(`koko_active_ig_username_${targetClientId}`, username);
+            }
+          }
         } catch (e) {
           console.warn('LocalStorage save error:', e);
         }
@@ -158,6 +207,23 @@ export default function SettingsPage() {
       console.warn('OAuth URL params parse error:', e);
     }
   }, [selectedClientId]);
+
+  // Disconnect social account
+  const handleDisconnectAccount = (platform: string) => {
+    try {
+      const stored = localStorage.getItem('koko_connected_social_accounts');
+      if (stored) {
+        const list: SocialAccountData[] = JSON.parse(stored);
+        const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === platform));
+        localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      }
+      localStorage.removeItem(`koko_active_ig_token_${selectedClientId}`);
+      localStorage.removeItem(`koko_active_ig_account_${selectedClientId}`);
+      localStorage.removeItem(`koko_active_ig_username_${selectedClientId}`);
+    } catch (e) {}
+
+    setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
+  };
 
   useEffect(() => {
     async function loadSocialAccounts() {
@@ -473,86 +539,132 @@ export default function SettingsPage() {
               <p className="text-[11px] text-neutral-400 mt-1">Professional & Creator Account Connection</p>
             </div>
 
-            {/* Form Input Mockups matching Screenshot 2 */}
-            <div className="space-y-3 mb-2">
-              <div>
-                <input
-                  type="text"
-                  value={igIdentifier}
-                  onChange={(e) => setIgIdentifier(e.target.value)}
-                  placeholder={igAccount?.platformAccountId || "Phone number, username or email address"}
-                  className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all"
-                />
+            {igAccount ? (
+              <div className="my-6 p-5 rounded-2xl bg-gradient-to-b from-emerald-950/40 via-neutral-900/60 to-neutral-900 border border-emerald-500/30 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-bold text-white tracking-tight">Instagram Account Connected</h4>
+                  <p className="text-base font-extrabold text-emerald-400 mt-1">
+                    {igAccount.platformAccountId}
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    60-day Long-Lived Token Active • Auto-Refreshing
+                  </p>
+                </div>
+
+                <div className="pt-2 space-y-2.5">
+                  <Link
+                    href="/"
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                  >
+                    View Live Analytics in Dashboard →
+                  </Link>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDisconnectAccount('instagram')}
+                      className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-rose-400 hover:text-rose-300 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Disconnect
+                    </button>
+                    <button
+                      type="button"
+                      onClick={triggerInstagramDirectLogin}
+                      className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Switch Account
+                    </button>
+                  </div>
+                </div>
               </div>
+            ) : (
+              <>
+                {/* Form Input Mockups matching Screenshot 2 */}
+                <div className="space-y-3 mb-2">
+                  <div>
+                    <input
+                      type="text"
+                      value={igIdentifier}
+                      onChange={(e) => setIgIdentifier(e.target.value)}
+                      placeholder="Phone number, username or email address"
+                      className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all"
+                    />
+                  </div>
 
-              <div className="relative">
-                <input
-                  type={showIgPassword ? "text" : "password"}
-                  value={igAccount ? "••••••••••••••••••••" : igPassword}
-                  onChange={(e) => setIgPassword(e.target.value)}
-                  readOnly={!!igAccount}
-                  placeholder={igAccount ? "60-Day Long-Lived Token Active" : "Password"}
-                  className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowIgPassword(!showIgPassword)}
-                  className="absolute right-3 top-3 text-neutral-500 hover:text-neutral-300"
-                >
-                  {showIgPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+                  <div className="relative">
+                    <input
+                      type={showIgPassword ? "text" : "password"}
+                      value={igPassword}
+                      onChange={(e) => setIgPassword(e.target.value)}
+                      placeholder="Password"
+                      className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowIgPassword(!showIgPassword)}
+                      className="absolute right-3 top-3 text-neutral-500 hover:text-neutral-300"
+                    >
+                      {showIgPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
 
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowSetupGuide(true)}
-                  className="text-[11px] text-neutral-400 hover:text-white transition-colors"
-                >
-                  Need help with setup?
-                </button>
-              </div>
-            </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowSetupGuide(true)}
+                      className="text-[11px] text-neutral-400 hover:text-white transition-colors"
+                    >
+                      Need help with setup?
+                    </button>
+                  </div>
+                </div>
 
-            {/* Primary Action Button: Purple to Crimson Gradient from Screenshot 2 */}
-            <div className="mt-4 space-y-3">
-              <button
-                type="button"
-                onClick={triggerInstagramDirectLogin}
-                className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
-              >
-                <ExternalLink className="w-4 h-4" />
-                login
-              </button>
+                {/* Primary Action Button: Purple to Crimson Gradient from Screenshot 2 */}
+                <div className="mt-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={triggerInstagramDirectLogin}
+                    className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    login
+                  </button>
 
-              {/* OR Divider Line */}
-              <div className="flex items-center my-3">
-                <div className="flex-grow border-t border-neutral-800" />
-                <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR</span>
-                <div className="flex-grow border-t border-neutral-800" />
-              </div>
+                  {/* OR Divider Line */}
+                  <div className="flex items-center my-3">
+                    <div className="flex-grow border-t border-neutral-800" />
+                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR</span>
+                    <div className="flex-grow border-t border-neutral-800" />
+                  </div>
 
-              {/* Meta Business Login Button from Screenshot 2 */}
-              <button
-                type="button"
-                onClick={() => triggerMetaFacebookLogin(false)}
-                className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
-                </svg>
-                login with meta
-              </button>
+                  {/* Meta Business Login Button from Screenshot 2 */}
+                  <button
+                    type="button"
+                    onClick={() => triggerMetaFacebookLogin(false)}
+                    className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                    </svg>
+                    login with meta
+                  </button>
 
-              {/* Direct Scopes Button (Bypasses email check completely) */}
-              <button
-                type="button"
-                onClick={() => triggerMetaFacebookLogin(true)}
-                className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                login with direct scopes (bypasses email)
-              </button>
-            </div>
+                  {/* Direct Scopes Button (Bypasses email check completely) */}
+                  <button
+                    type="button"
+                    onClick={() => triggerMetaFacebookLogin(true)}
+                    className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    login with direct scopes (bypasses email)
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Card Footer Info */}
