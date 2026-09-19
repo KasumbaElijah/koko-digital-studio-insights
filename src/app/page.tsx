@@ -172,12 +172,31 @@ export default function DashboardPage() {
 
       setIsLoading(true);
       try {
+        // Helper to purge any legacy mock posts from browser storage
+        const purgeMockPosts = (postsList: any[]) => {
+          if (!Array.isArray(postsList)) return [];
+          return postsList.filter((p: any) => {
+            const isMock =
+              p.thumbnailUrl?.includes('unsplash.com') ||
+              p.postId?.startsWith('ig_mock_') ||
+              p.postId?.startsWith('tt_mock_') ||
+              p.postId?.startsWith('ig_synced_') ||
+              p.id?.startsWith('ig_mock_') ||
+              p.id?.startsWith('tt_mock_') ||
+              p.id?.startsWith('ig_synced_');
+            return !isMock;
+          });
+        };
+
         // Read cached report from localStorage first for instant load
         try {
           const cached = localStorage.getItem(`koko_report_${selectedClientId}`);
           if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed && (parsed.id || parsed.igViews != null)) {
+              if (parsed.posts) {
+                parsed.posts = purgeMockPosts(parsed.posts);
+              }
               setReport(parsed);
             }
           }
@@ -186,6 +205,9 @@ export default function DashboardPage() {
         const res = await axios.get(`/api/reports?clientId=${selectedClientId}&startDate=${startDate}&endDate=${endDate}`);
         const reportData = Array.isArray(res.data) ? res.data[0] : res.data;
         if (reportData && (reportData.igViews > 0 || !report?.igViews)) {
+          if (reportData.posts) {
+            reportData.posts = purgeMockPosts(reportData.posts);
+          }
           setReport(reportData);
           try {
             localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(reportData));
@@ -296,6 +318,26 @@ export default function DashboardPage() {
         insights,
         nextSteps,
       }));
+    }
+  };
+
+  // Update real posts list (persists to localStorage and DB)
+  const handleUpdatePosts = async (updatedPosts: any[]) => {
+    const updatedReport = {
+      ...safeReport,
+      posts: updatedPosts,
+    };
+    setReport(updatedReport);
+    try {
+      localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
+    } catch (e) {}
+
+    try {
+      await axios.put(`/api/report-details/${safeReport.id}`, {
+        posts: updatedPosts,
+      });
+    } catch (err) {
+      console.warn('API update posts notice:', err);
     }
   };
 
@@ -411,7 +453,13 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Top Content Previews */}
-                <TopContentSection clientName={selectedClient.name} posts={safeReport.posts || []} />
+                <TopContentSection
+                  clientName={selectedClient.name}
+                  posts={safeReport.posts || []}
+                  onUpdatePosts={handleUpdatePosts}
+                  onSyncPosts={handleLiveSync}
+                  isSyncing={isSyncing}
+                />
 
                 {/* Strategy Editors */}
                 <StrategyEditor

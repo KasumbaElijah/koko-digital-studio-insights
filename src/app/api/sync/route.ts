@@ -74,24 +74,45 @@ export async function POST(request: Request) {
       }
     }
 
-    const posts = (igMetrics?.posts && igMetrics.posts.length > 0)
-      ? igMetrics.posts.map((p, idx) => ({
-          id: p.postId || `post_${idx}`,
-          postId: p.postId || `post_${idx}`,
-          clientId,
-          platform: 'instagram' as const,
-          title: p.contentFormat === 'Videos' ? 'High Traction Video Reel' : (p.contentFormat === 'Stories' ? 'Daily Community Story' : 'Creative Studio Feature'),
-          contentFormat: p.contentFormat,
-          format: p.contentFormat,
-          viewsCount: p.viewsCount,
-          likesCount: p.likesCount,
-          commentsCount: p.commentsCount,
-          sharesCount: p.sharesCount,
-          thumbnailUrl: p.thumbnailUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
-          isTopPerformer: idx === 0 || p.viewsCount > 30000,
-          publishedAt: p.publishedAt,
-        }))
-      : [];
+    const igPosts = (igMetrics?.posts || []).map((p: any, idx: number) => ({
+      id: p.postId || `post_ig_${idx}`,
+      postId: p.postId || `post_ig_${idx}`,
+      clientId,
+      platform: 'instagram' as const,
+      title: p.title || (p.contentFormat === 'Videos' ? 'High Traction Video Reel' : 'Instagram Feature'),
+      caption: p.caption || '',
+      permalink: p.permalink || '',
+      contentFormat: p.contentFormat,
+      format: p.contentFormat,
+      viewsCount: p.viewsCount,
+      likesCount: p.likesCount,
+      commentsCount: p.commentsCount,
+      sharesCount: p.sharesCount,
+      thumbnailUrl: p.thumbnailUrl || null,
+      isTopPerformer: idx === 0 || p.viewsCount > 10000,
+      publishedAt: p.publishedAt,
+    }));
+
+    const ttPosts = (ttMetrics?.posts || []).map((p: any, idx: number) => ({
+      id: p.postId || `post_tt_${idx}`,
+      postId: p.postId || `post_tt_${idx}`,
+      clientId,
+      platform: 'tiktok' as const,
+      title: p.title || 'TikTok Video',
+      caption: p.caption || '',
+      permalink: p.permalink || '',
+      contentFormat: p.contentFormat,
+      format: p.contentFormat,
+      viewsCount: p.viewsCount,
+      likesCount: p.likesCount,
+      commentsCount: p.commentsCount,
+      sharesCount: p.sharesCount,
+      thumbnailUrl: p.thumbnailUrl || null,
+      isTopPerformer: idx === 0 || p.viewsCount > 10000,
+      publishedAt: p.publishedAt,
+    }));
+
+    const posts = [...igPosts, ...ttPosts];
 
     const updatedReport = {
       id: `report-${clientId}`,

@@ -17,6 +17,17 @@ interface FormatBarChartProps {
 }
 
 export const FormatBarChart: React.FC<FormatBarChartProps> = ({ data }) => {
+  const totalCount = data.reduce((sum, item) => sum + (item.count || 0), 0);
+
+  if (!data.length || totalCount === 0) {
+    return (
+      <div className="w-full h-56 flex flex-col items-center justify-center text-center p-4 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">No Format Breakdown</p>
+        <p className="text-xs text-gray-500 mt-1">Posts will appear categorized once synced or added.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-56">
       <ResponsiveContainer width="100%" height="100%">

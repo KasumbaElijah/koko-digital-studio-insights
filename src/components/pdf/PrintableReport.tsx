@@ -295,37 +295,46 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
           </h2>
 
           {/* Top 3 Videos Smartphone Grid */}
-          <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-12">
-            {topPosts.map((post, idx) => (
-              <div key={post?.id || idx} className="flex flex-col items-center">
-                <div className="mb-2 text-xs font-bold tracking-wider text-gray-700 uppercase">
-                  {idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3'}
-                </div>
+          {topPosts.length === 0 ? (
+            <div className="max-w-md mx-auto my-12 p-8 border border-dashed border-gray-300 rounded-3xl text-center">
+              <p className="text-sm font-bold text-gray-700">No media posts recorded for this period</p>
+              <p className="text-xs text-gray-500 mt-1">Connect social accounts or link real creative posts in the dashboard to showcase top content in this report.</p>
+            </div>
+          ) : (
+            <div className={`grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-12`}>
+              {topPosts.map((post, idx) => (
+                <div key={post?.id || idx} className="flex flex-col items-center">
+                  <div className="mb-2 text-xs font-bold tracking-wider text-gray-700 uppercase">
+                    {idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3'}
+                  </div>
 
-                <div className="relative w-44 h-72 bg-black rounded-[32px] p-2 border-4 border-gray-800 shadow-xl overflow-hidden flex flex-col justify-between">
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 bg-black rounded-full z-20"></div>
+                  <div className="relative w-44 h-72 bg-black rounded-[32px] p-2 border-4 border-gray-800 shadow-xl overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 bg-black rounded-full z-20"></div>
 
-                  <div className="relative w-full h-full rounded-[24px] overflow-hidden bg-gray-900">
-                    {post?.thumbnailUrl ? (
-                      <img src={post.thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Video</div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70"></div>
+                    <div className="relative w-full h-full rounded-[24px] overflow-hidden bg-gray-900">
+                      {post?.thumbnailUrl ? (
+                        <img src={post.thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 text-xs p-3 text-center">
+                          <span className="font-semibold line-clamp-3">{post?.title || 'Video Content'}</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70"></div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-center">
+                    <p className="text-lg font-bold text-gray-900 leading-tight">
+                      {formatNumberShort(post?.viewsCount ?? 0)}
+                    </p>
+                    <p className="text-[10px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
+                      {post?.platform ? post.platform.toUpperCase() : 'INSTAGRAM'}
+                    </p>
                   </div>
                 </div>
-
-                <div className="mt-3 text-center">
-                  <p className="text-lg font-bold text-gray-900 leading-tight">
-                    {formatNumberShort(post?.viewsCount ?? 0)}
-                  </p>
-                  <p className="text-[10px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
-                    {post?.platform || 'Instagram'}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* Strategy Cards: INSIGHTS & NEXT STEPS */}
           <div className="grid grid-cols-2 gap-6 max-w-3xl mx-auto">

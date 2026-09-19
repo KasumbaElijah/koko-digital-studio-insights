@@ -22,6 +22,9 @@ export interface ContentPostData {
   reportId?: string;
   platform: 'instagram' | 'tiktok';
   postId: string;
+  title?: string;
+  caption?: string;
+  permalink?: string | null;
   contentFormat: 'Image' | 'Videos' | 'Graphic' | 'Stories';
   viewsCount: number;
   likesCount: number;

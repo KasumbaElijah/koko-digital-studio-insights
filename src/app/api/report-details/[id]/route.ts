@@ -32,13 +32,15 @@ export async function GET(
   }
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     const body = await request.json();
-    const { goals, insights, nextSteps, startDate, endDate } = body;
+    const { goals, insights, nextSteps, startDate, endDate, posts } = body;
 
     try {
       const updateData: any = {};
@@ -47,6 +49,27 @@ export async function PUT(
       if (nextSteps !== undefined) updateData.nextSteps = nextSteps;
       if (startDate !== undefined) updateData.startDate = new Date(startDate);
       if (endDate !== undefined) updateData.endDate = new Date(endDate);
+
+      if (posts && Array.isArray(posts)) {
+        await prisma.contentPost.deleteMany({ where: { reportId: params.id } });
+        if (posts.length > 0) {
+          await prisma.contentPost.createMany({
+            data: posts.map((p: any) => ({
+              reportId: params.id,
+              platform: p.platform || 'instagram',
+              postId: p.postId || `post_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              contentFormat: p.contentFormat || 'Videos',
+              viewsCount: Number(p.viewsCount) || 0,
+              likesCount: Number(p.likesCount) || 0,
+              commentsCount: Number(p.commentsCount) || 0,
+              sharesCount: Number(p.sharesCount) || 0,
+              thumbnailUrl: p.thumbnailUrl || null,
+              isTopPerformer: Boolean(p.isTopPerformer),
+              publishedAt: p.publishedAt ? new Date(p.publishedAt) : new Date(),
+            })),
+          });
+        }
+      }
 
       const updatedReport = await prisma.monthlyReport.update({
         where: { id: params.id },
@@ -60,8 +83,10 @@ export async function PUT(
       return NextResponse.json(serializeData(updatedReport));
     } catch (dbErr) {
       console.warn('DB update fallback in report details:', dbErr);
-      const fallback = Object.values(INITIAL_REPORTS).find((r) => r.id === params.id) || Object.values(INITIAL_REPORTS)[0];
-      return NextResponse.json(fallback);
+      return NextResponse.json({
+        id: params.id,
+        ...body,
+      });
     }
   } catch (error) {
     console.error('Error updating report:', error);

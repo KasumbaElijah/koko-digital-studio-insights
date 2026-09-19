@@ -11,6 +11,17 @@ interface DistributionPieChartProps {
 const COLORS = ['#e3e1d5', '#bebbb0'];
 
 export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({ data }) => {
+  const totalCount = data.reduce((sum, item) => sum + (item.count || 0), 0);
+
+  if (!data.length || totalCount === 0) {
+    return (
+      <div className="w-full h-56 flex flex-col items-center justify-center text-center p-4 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">No Content Data</p>
+        <p className="text-xs text-gray-500 mt-1">No published posts recorded for this period.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-56 flex flex-col items-center justify-center relative">
       <ResponsiveContainer width="100%" height="100%">

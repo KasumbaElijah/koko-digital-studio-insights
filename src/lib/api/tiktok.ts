@@ -6,12 +6,15 @@ export interface TikTokMetricResult {
   engagementRate: number;
   posts: Array<{
     postId: string;
+    title?: string;
+    caption?: string;
+    permalink?: string;
     contentFormat: 'Image' | 'Videos' | 'Graphic' | 'Stories';
     viewsCount: number;
     likesCount: number;
     commentsCount: number;
     sharesCount: number;
-    thumbnailUrl?: string;
+    thumbnailUrl?: string | null;
     publishedAt: string;
   }>;
 }
@@ -25,76 +28,108 @@ export async function fetchTikTokMetrics(
   const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === 'true' || !accessToken || accessToken.startsWith('mock_');
 
   if (isMockMode) {
-    const durationDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const multiplier = durationDays / 30;
-
     return {
-      followersGrowth: Math.round(2600 * multiplier),
-      totalViews: Math.round(476800 * multiplier),
-      engagementRate: 8.2,
-      posts: [
-        {
-          postId: `tt_mock_${Date.now()}_1`,
-          contentFormat: 'Videos',
-          viewsCount: Math.round(163200 * multiplier),
-          likesCount: 12400,
-          commentsCount: 385,
-          sharesCount: 1654,
-          thumbnailUrl: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=600&q=80',
-          publishedAt: new Date(startDate.getTime() + 86400000 * 2).toISOString(),
-        },
-        {
-          postId: `tt_mock_${Date.now()}_2`,
-          contentFormat: 'Videos',
-          viewsCount: Math.round(118000 * multiplier),
-          likesCount: 9200,
-          commentsCount: 290,
-          sharesCount: 899,
-          thumbnailUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80',
-          publishedAt: new Date(startDate.getTime() + 86400000 * 5).toISOString(),
-        },
-      ],
+      followersGrowth: 0,
+      totalViews: 0,
+      engagementRate: 0,
+      posts: [],
     };
   }
 
   try {
-    // TikTok Display API v2 endpoint integration
-    const response = await axios.post(
-      'https://open.tiktokapis.com/v2/research/video/query/',
-      {
-        query: {
-          and: [{ field_name: 'username', operation: 'EQ', field_values: [platformAccountId] }],
-        },
-        start_date: startDate.toISOString().split('T')[0].replace(/-/g, ''),
-        end_date: endDate.toISOString().split('T')[0].replace(/-/g, ''),
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const videos = response.data?.data?.videos || [];
+    let postsList: TikTokMetricResult['posts'] = [];
     let totalViews = 0;
     let totalEngagements = 0;
 
-    videos.forEach((v: { view_count: number; like_count: number; comment_count: number; share_count: number }) => {
-      totalViews += v.view_count || 0;
-      totalEngagements += (v.like_count || 0) + (v.comment_count || 0) + (v.share_count || 0);
-    });
+    // 1. Query TikTok Display API v2 video list
+    try {
+      const response = await axios.post(
+        'https://open.tiktokapis.com/v2/video/list/',
+        {
+          max_count: 20,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          params: {
+            fields: 'id,title,video_description,duration,cover_image_url,embed_html,embed_link,like_count,comment_count,share_count,view_count',
+          },
+          timeout: 10000,
+        }
+      );
+
+      const videos = response.data?.data?.videos || [];
+      if (videos.length > 0) {
+        postsList = videos.map((v: any, idx: number) => {
+          const views = Number(v.view_count) || 0;
+          const likes = Number(v.like_count) || 0;
+          const comments = Number(v.comment_count) || 0;
+          const shares = Number(v.share_count) || 0;
+
+          totalViews += views;
+          totalEngagements += likes + comments + shares;
+
+          const rawTitle = v.title || v.video_description || '';
+          const displayTitle = rawTitle
+            ? (rawTitle.length > 75 ? `${rawTitle.substring(0, 75)}...` : rawTitle)
+            : 'TikTok Video';
+
+          return {
+            postId: v.id || `tt_live_${idx}`,
+            title: displayTitle,
+            caption: rawTitle,
+            permalink: v.embed_link || '',
+            contentFormat: 'Videos' as const,
+            viewsCount: views,
+            likesCount: likes,
+            commentsCount: comments,
+            sharesCount: shares,
+            thumbnailUrl: v.cover_image_url || null,
+            publishedAt: new Date().toISOString(),
+          };
+        });
+      }
+    } catch (listErr) {
+      // If video/list/ fails, try research/video/query
+      try {
+        const cleanUsername = platformAccountId.replace(/^@/, '');
+        const resQuery = await axios.post(
+          'https://open.tiktokapis.com/v2/research/video/query/',
+          {
+            query: {
+              and: [{ field_name: 'username', operation: 'EQ', field_values: [cleanUsername] }],
+            },
+            start_date: startDate.toISOString().split('T')[0].replace(/-/g, ''),
+            end_date: endDate.toISOString().split('T')[0].replace(/-/g, ''),
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 10000,
+          }
+        );
+        const videos = resQuery.data?.data?.videos || [];
+        videos.forEach((v: any) => {
+          totalViews += v.view_count || 0;
+          totalEngagements += (v.like_count || 0) + (v.comment_count || 0) + (v.share_count || 0);
+        });
+      } catch (qErr) {}
+    }
 
     const engagementRate = totalViews > 0 ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1)) : 0;
 
     return {
       followersGrowth: 0,
-      totalViews: totalViews || 0,
+      totalViews,
       engagementRate,
-      posts: [],
+      posts: postsList,
     };
   } catch (error) {
-    console.warn('TikTok Display API request failed, returning baseline 0 metrics:', error);
+    console.warn('TikTok Display API request notice:', error);
     return {
       followersGrowth: 0,
       totalViews: 0,

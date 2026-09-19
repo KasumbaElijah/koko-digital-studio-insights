@@ -75,12 +75,6 @@ export function getPlatformDistribution(posts?: ContentPostData[] | null): Distr
     if (p === 'tiktok') tiktok++;
   });
 
-  // Fallback defaults matching report sample if empty
-  if (instagram === 0 && tiktok === 0) {
-    instagram = 4;
-    tiktok = 2;
-  }
-
   return [
     { platform: 'Instagram', count: instagram },
     { platform: 'TikTok', count: tiktok },
