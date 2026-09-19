@@ -9,14 +9,23 @@ interface KPIGridProps {
 }
 
 export const KPIGrid: React.FC<KPIGridProps> = ({ report }) => {
-  const igFollowersStr = report.igFollowersGrowth > 0 ? `+${formatNumberShort(report.igFollowersGrowth)}` : `${report.igFollowersGrowth}`;
-  const ttFollowersStr = report.ttFollowersGrowth > 0 ? `+${formatNumberShort(report.ttFollowersGrowth)}` : `${report.ttFollowersGrowth}`;
+  const safeReport = report || ({} as Partial<MonthlyReportData>);
+  const igGrowth = safeReport.igFollowersGrowth != null ? Number(safeReport.igFollowersGrowth) : 0;
+  const ttGrowth = safeReport.ttFollowersGrowth != null ? Number(safeReport.ttFollowersGrowth) : 0;
 
-  const igViewsStr = formatNumberShort(report.igViews);
-  const ttViewsStr = formatNumberShort(report.ttViews);
+  const igFollowersStr = igGrowth > 0 ? `+${formatNumberShort(igGrowth)}` : formatNumberShort(igGrowth);
+  const ttFollowersStr = ttGrowth > 0 ? `+${formatNumberShort(ttGrowth)}` : formatNumberShort(ttGrowth);
 
-  const igPctStr = report.igViewsPctChange >= 0 ? `+${report.igViewsPctChange.toLocaleString()}%` : `${report.igViewsPctChange}%`;
-  const ttPctStr = report.ttViewsPctChange >= 0 ? `+${report.ttViewsPctChange.toLocaleString()}%` : `${report.ttViewsPctChange}%`;
+  const igViewsStr = formatNumberShort(safeReport.igViews ?? 0);
+  const ttViewsStr = formatNumberShort(safeReport.ttViews ?? 0);
+
+  const igPct = safeReport.igViewsPctChange != null ? Number(safeReport.igViewsPctChange) : 0;
+  const ttPct = safeReport.ttViewsPctChange != null ? Number(safeReport.ttViewsPctChange) : 0;
+  const igPctStr = igPct >= 0 ? `+${igPct.toLocaleString()}%` : `${igPct.toLocaleString()}%`;
+  const ttPctStr = ttPct >= 0 ? `+${ttPct.toLocaleString()}%` : `${ttPct.toLocaleString()}%`;
+
+  const igRate = safeReport.igEngagementRate != null ? safeReport.igEngagementRate : 0;
+  const ttRate = safeReport.ttEngagementRate != null ? safeReport.ttEngagementRate : 0;
 
   return (
     <div className="w-full bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-6">
@@ -63,7 +72,7 @@ export const KPIGrid: React.FC<KPIGridProps> = ({ report }) => {
         </div>
         <div className="col-span-3 text-center">
           <span className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-            {report.igEngagementRate}%
+            {igRate}%
           </span>
         </div>
       </div>
@@ -91,7 +100,7 @@ export const KPIGrid: React.FC<KPIGridProps> = ({ report }) => {
         </div>
         <div className="col-span-3 text-center">
           <span className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-            {report.ttEngagementRate}%
+            {ttRate}%
           </span>
         </div>
       </div>

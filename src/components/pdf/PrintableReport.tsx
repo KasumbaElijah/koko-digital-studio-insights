@@ -12,32 +12,45 @@ interface PrintableReportProps {
 }
 
 export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client }) => {
-  const formatData = getFormatDistribution(report.posts || []);
-  const distributionData = getPlatformDistribution(report.posts || []);
-  const topPosts = getTopPerformingPosts(report.posts || [], 3);
+  const safeReport = report || ({} as Partial<MonthlyReportData>);
+  const safeClient = client || ({ name: 'Client' } as ClientData);
 
-  const formatDateString = (dateStr: string) => {
+  const formatData = getFormatDistribution(safeReport.posts || []);
+  const distributionData = getPlatformDistribution(safeReport.posts || []);
+  const topPosts = getTopPerformingPosts(safeReport.posts || [], 3);
+
+  const formatDateString = (dateStr?: string | null) => {
+    if (!dateStr) return '';
     try {
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return String(dateStr);
       const day = date.getDate();
       const month = date.toLocaleString('en-US', { month: 'short' });
       const suffix = day === 1 || day === 21 || day === 31 ? 'st' : day === 2 || day === 22 ? 'nd' : day === 3 || day === 23 ? 'rd' : 'th';
       return `${day}${suffix} ${month}`;
     } catch {
-      return dateStr;
+      return String(dateStr);
     }
   };
 
-  const formattedDateRange = `${formatDateString(report.startDate)} - ${formatDateString(report.endDate)}`;
+  const formattedDateRange = `${formatDateString(safeReport.startDate)} - ${formatDateString(safeReport.endDate)}`;
 
-  const igFollowersStr = report.igFollowersGrowth > 0 ? `+${formatNumberShort(report.igFollowersGrowth)}` : `${report.igFollowersGrowth}`;
-  const ttFollowersStr = report.ttFollowersGrowth > 0 ? `+${formatNumberShort(report.ttFollowersGrowth)}` : `${report.ttFollowersGrowth}`;
+  const igGrowth = safeReport.igFollowersGrowth != null ? Number(safeReport.igFollowersGrowth) : 0;
+  const ttGrowth = safeReport.ttFollowersGrowth != null ? Number(safeReport.ttFollowersGrowth) : 0;
 
-  const igViewsStr = formatNumberShort(report.igViews);
-  const ttViewsStr = formatNumberShort(report.ttViews);
+  const igFollowersStr = igGrowth > 0 ? `+${formatNumberShort(igGrowth)}` : formatNumberShort(igGrowth);
+  const ttFollowersStr = ttGrowth > 0 ? `+${formatNumberShort(ttGrowth)}` : formatNumberShort(ttGrowth);
 
-  const igPctStr = report.igViewsPctChange >= 0 ? `+${report.igViewsPctChange.toLocaleString()}%` : `${report.igViewsPctChange}%`;
-  const ttPctStr = report.ttViewsPctChange >= 0 ? `+${report.ttViewsPctChange.toLocaleString()}%` : `${report.ttViewsPctChange}%`;
+  const igViewsStr = formatNumberShort(safeReport.igViews ?? 0);
+  const ttViewsStr = formatNumberShort(safeReport.ttViews ?? 0);
+
+  const igPct = safeReport.igViewsPctChange != null ? Number(safeReport.igViewsPctChange) : 0;
+  const ttPct = safeReport.ttViewsPctChange != null ? Number(safeReport.ttViewsPctChange) : 0;
+  const igPctStr = igPct >= 0 ? `+${igPct.toLocaleString()}%` : `${igPct.toLocaleString()}%`;
+  const ttPctStr = ttPct >= 0 ? `+${ttPct.toLocaleString()}%` : `${ttPct.toLocaleString()}%`;
+
+  const igRate = safeReport.igEngagementRate != null ? safeReport.igEngagementRate : 0;
+  const ttRate = safeReport.ttEngagementRate != null ? safeReport.ttEngagementRate : 0;
 
   return (
     <div id="printable-report" className="bg-white text-gray-900 font-sans">
@@ -62,7 +75,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
             <div className="flex items-center justify-between text-sm sm:text-base font-medium text-gray-800">
               <div>
                 <span className="text-gray-600">Client name: </span>
-                <span className="font-bold">{client.name}</span>
+                <span className="font-bold">{safeClient.name}</span>
               </div>
               <div className="font-semibold">{formattedDateRange}</div>
               <div className="font-bold tracking-tight">Koko Digital Studios</div>
@@ -75,8 +88,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
               GOALS:
             </h2>
             <ul className="list-disc list-inside space-y-1.5 text-sm sm:text-base text-gray-800 leading-relaxed font-medium">
-              {report.goals && report.goals.length > 0 ? (
-                report.goals.map((g, idx) => <li key={idx}>{g}</li>)
+              {safeReport.goals && safeReport.goals.length > 0 ? (
+                safeReport.goals.map((g, idx) => <li key={idx}>{g}</li>)
               ) : (
                 <li>No specific goals specified for this period.</li>
               )}
@@ -128,7 +141,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
               </div>
               <div className="col-span-3 text-center">
                 <span className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-                  {report.igEngagementRate}%
+                  {igRate}%
                 </span>
               </div>
             </div>
@@ -156,7 +169,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
               </div>
               <div className="col-span-3 text-center">
                 <span className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-                  {report.ttEngagementRate}%
+                  {ttRate}%
                 </span>
               </div>
             </div>
@@ -185,7 +198,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
         <div className="flex items-end justify-between pt-4">
           <div className="flex items-center gap-3">
             <div className="w-16 h-16 bg-gray-900 text-white rounded-xl flex items-center justify-center font-bold text-xs p-2 text-center leading-tight">
-              {client.name.toUpperCase()}
+              {safeClient.name ? safeClient.name.toUpperCase() : 'CLIENT'}
             </div>
           </div>
 
@@ -209,13 +222,13 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
         <div>
           {/* Top Title */}
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-gray-900 font-heading text-center mb-10 uppercase">
-            TOP PERFORMING CONTENT {client.name}
+            TOP PERFORMING CONTENT {safeClient.name || 'CLIENT'}
           </h2>
 
           {/* Top 3 Videos Smartphone Grid */}
           <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-12">
             {topPosts.map((post, idx) => (
-              <div key={post.id || idx} className="flex flex-col items-center">
+              <div key={post?.id || idx} className="flex flex-col items-center">
                 <div className="mb-2 text-xs font-bold tracking-wider text-gray-700 uppercase">
                   {idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3'}
                 </div>
@@ -224,7 +237,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 bg-black rounded-full z-20"></div>
 
                   <div className="relative w-full h-full rounded-[24px] overflow-hidden bg-gray-900">
-                    {post.thumbnailUrl ? (
+                    {post?.thumbnailUrl ? (
                       <img src={post.thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Video</div>
@@ -235,10 +248,10 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
 
                 <div className="mt-3 text-center">
                   <p className="text-lg font-bold text-gray-900 leading-tight">
-                    {formatNumberShort(post.viewsCount)}
+                    {formatNumberShort(post?.viewsCount ?? 0)}
                   </p>
                   <p className="text-[10px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
-                    {post.platform}
+                    {post?.platform || 'Instagram'}
                   </p>
                 </div>
               </div>
@@ -254,8 +267,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                   INSIGHTS:
                 </h3>
                 <ul className="list-disc list-inside space-y-2 text-xs sm:text-sm font-medium text-gray-800 leading-relaxed">
-                  {report.insights && report.insights.length > 0 ? (
-                    report.insights.map((insight, idx) => <li key={idx}>{insight}</li>)
+                  {safeReport.insights && safeReport.insights.length > 0 ? (
+                    safeReport.insights.map((insight, idx) => <li key={idx}>{insight}</li>)
                   ) : (
                     <li>No specific insights added yet.</li>
                   )}
@@ -270,8 +283,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                   NEXT STEPS:
                 </h3>
                 <ul className="list-disc list-inside space-y-2 text-xs sm:text-sm font-medium text-gray-800 leading-relaxed">
-                  {report.nextSteps && report.nextSteps.length > 0 ? (
-                    report.nextSteps.map((step, idx) => <li key={idx}>{step}</li>)
+                  {safeReport.nextSteps && safeReport.nextSteps.length > 0 ? (
+                    safeReport.nextSteps.map((step, idx) => <li key={idx}>{step}</li>)
                   ) : (
                     <li>No next steps added yet.</li>
                   )}

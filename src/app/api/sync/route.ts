@@ -74,9 +74,11 @@ export async function POST(request: Request) {
     const posts = (igMetrics?.posts && igMetrics.posts.length > 0)
       ? igMetrics.posts.map((p, idx) => ({
           id: p.postId || `post_${idx}`,
+          postId: p.postId || `post_${idx}`,
           clientId,
           platform: 'instagram' as const,
           title: p.contentFormat === 'Videos' ? 'High Traction Video Reel' : (p.contentFormat === 'Stories' ? 'Daily Community Story' : 'Creative Studio Feature'),
+          contentFormat: p.contentFormat,
           format: p.contentFormat,
           viewsCount: p.viewsCount,
           likesCount: p.likesCount,

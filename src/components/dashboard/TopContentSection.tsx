@@ -40,9 +40,10 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({ clientName
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-4xl mx-auto">
         {topPosts.map((post, idx) => {
-          const formattedViews = formatNumberShort(post.viewsCount);
-          const platformLabel = post.platform.toUpperCase();
+          const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
+          const platformLabel = String(post?.platform || 'instagram').toUpperCase();
           const videoTitle = idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3';
+          const formatTag = String(post?.contentFormat || (post as any)?.format || 'video').toLowerCase();
 
           return (
             <div key={post.id || idx} className="flex flex-col items-center">
@@ -76,25 +77,25 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({ clientName
                       <div className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center">
                         <Heart className="w-4 h-4 text-white fill-white/20" />
                       </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post.likesCount)}</span>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.likesCount ?? 0)}</span>
                     </div>
                     <div className="flex flex-col items-center">
                       <div className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center">
                         <MessageCircle className="w-4 h-4 text-white" />
                       </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{post.commentsCount}</span>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.commentsCount ?? 0)}</span>
                     </div>
                     <div className="flex flex-col items-center">
                       <div className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center">
                         <Share2 className="w-4 h-4 text-white" />
                       </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{post.sharesCount}</span>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.sharesCount ?? 0)}</span>
                     </div>
                   </div>
 
                   <div className="absolute bottom-3 left-3 right-12 z-10 text-white text-left">
                     <p className="text-xs font-bold leading-snug line-clamp-2 drop-shadow-sm">
-                      {clientName} • #{post.contentFormat.toLowerCase()}
+                      {clientName || 'Client'} • #{formatTag}
                     </p>
                   </div>
                 </div>
