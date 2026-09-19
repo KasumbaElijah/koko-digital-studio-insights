@@ -280,11 +280,11 @@ export default function SettingsPage() {
         localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
       } catch (e) {}
     }
-    // Launch official Meta Login for Business (Connects Instagram Business/Creator Account)
-    triggerMetaFacebookLogin();
+    // Launch official Meta Login using direct verified scopes (bypasses config and email)
+    triggerMetaFacebookLogin(true);
   };
 
-  // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639 & Config ID)
+  // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
   const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
     if (igIdentifier.trim()) {
       try {
@@ -293,7 +293,7 @@ export default function SettingsPage() {
     }
 
     const fbAppId = '1532121481550639';
-    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812');
+    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || null);
 
     if (!fbAppId || fbAppId.length < 5) {
       setShowSetupGuide(true);
@@ -306,7 +306,7 @@ export default function SettingsPage() {
     
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_read_engagement,pages_show_list&response_type=code`;
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };
