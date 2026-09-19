@@ -8,8 +8,11 @@ import { INITIAL_REPORTS } from '@/lib/mockData';
 export async function POST(request: Request) {
   try {
     let clientId = '';
-    let startDateStr = '2026-06-11';
-    let endDateStr = '2026-07-10';
+    const defaultEnd = new Date();
+    const defaultStart = new Date();
+    defaultStart.setDate(defaultEnd.getDate() - 30);
+    let startDateStr = defaultStart.toISOString().split('T')[0];
+    let endDateStr = defaultEnd.toISOString().split('T')[0];
     let bodyAccessToken = '';
     let bodyPlatformAccountId = '';
 

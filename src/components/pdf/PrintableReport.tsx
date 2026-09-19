@@ -35,6 +35,19 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
 
   const formattedDateRange = `${formatDateString(safeReport.startDate)} - ${formatDateString(safeReport.endDate)}`;
 
+  const reportTitle = React.useMemo(() => {
+    try {
+      const dateToUse = safeReport.endDate || safeReport.startDate;
+      if (dateToUse) {
+        const d = new Date(dateToUse);
+        if (!isNaN(d.getTime())) {
+          return `${d.toLocaleString('en-US', { month: 'long' })} Report`;
+        }
+      }
+    } catch {}
+    return 'Monthly Performance Report';
+  }, [safeReport.endDate, safeReport.startDate]);
+
   const igGrowth = safeReport.igFollowersGrowth != null ? Number(safeReport.igFollowersGrowth) : 0;
   const ttGrowth = safeReport.ttFollowersGrowth != null ? Number(safeReport.ttFollowersGrowth) : 0;
 
@@ -69,7 +82,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-gray-900 font-heading text-center mb-8">
-              June Report
+              {reportTitle}
             </h1>
 
             <div className="flex items-center justify-between text-sm sm:text-base font-medium text-gray-800">

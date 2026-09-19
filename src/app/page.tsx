@@ -19,10 +19,16 @@ import { Eye, Layers, Sparkles, Plus, AlertCircle } from 'lucide-react';
 export default function DashboardPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
-
   const [report, setReport] = useState<MonthlyReportData>(EMPTY_REPORT);
-  const [startDate, setStartDate] = useState<string>('2026-06-11');
-  const [endDate, setEndDate] = useState<string>('2026-07-10');
+
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);

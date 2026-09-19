@@ -2,11 +2,23 @@ import { MonthlyReportData, ClientData } from './types';
 
 export const INITIAL_CLIENTS: ClientData[] = [];
 
+export function getRolling30DayRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 30);
+  return {
+    startDate: start.toISOString().split('T')[0],
+    endDate: end.toISOString().split('T')[0],
+  };
+}
+
+const defaultDates = getRolling30DayRange();
+
 export const EMPTY_REPORT: MonthlyReportData = {
   id: 'report-empty-state',
   clientId: '',
-  startDate: '2026-06-11',
-  endDate: '2026-07-10',
+  startDate: defaultDates.startDate,
+  endDate: defaultDates.endDate,
   goals: [
     'Connect Instagram Business or TikTok account in Settings to start tracking strategy goals.',
   ],
@@ -30,10 +42,13 @@ export const EMPTY_REPORT: MonthlyReportData = {
 export const INITIAL_REPORTS: Record<string, MonthlyReportData> = {};
 
 export function createEmptyReport(clientId: string = ''): MonthlyReportData {
+  const dates = getRolling30DayRange();
   return {
     ...EMPTY_REPORT,
     id: clientId ? `report-${clientId}` : 'report-empty-state',
     clientId,
+    startDate: dates.startDate,
+    endDate: dates.endDate,
   };
 }
 

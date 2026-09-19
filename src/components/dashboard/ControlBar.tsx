@@ -34,14 +34,17 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onPrintPdf,
   connectedPlatforms,
 }) => {
-  const setJunePreset = () => {
-    onDateChange('2026-06-11', '2026-07-10');
-  };
-
   const setLast30Days = () => {
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 30);
+    onDateChange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
+  };
+
+  const setLast7Days = () => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - 7);
     onDateChange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
   };
 
@@ -108,16 +111,16 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 
           <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl text-xs font-medium">
             <button
-              onClick={setJunePreset}
-              className="px-2.5 py-1 rounded-lg hover:bg-white transition-all text-gray-700 hover:shadow-xs"
+              onClick={setLast30Days}
+              className="px-2.5 py-1 rounded-lg hover:bg-white transition-all text-gray-700 hover:shadow-xs cursor-pointer"
             >
-              June Report (11 Jun - 10 Jul)
+              Last 30 Days
             </button>
             <button
-              onClick={setLast30Days}
-              className="px-2.5 py-1 rounded-lg hover:bg-white transition-all text-gray-700 hover:shadow-xs"
+              onClick={setLast7Days}
+              className="px-2.5 py-1 rounded-lg hover:bg-white transition-all text-gray-700 hover:shadow-xs cursor-pointer"
             >
-              30 Days
+              Last 7 Days
             </button>
           </div>
         </div>
