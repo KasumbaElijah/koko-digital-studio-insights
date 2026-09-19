@@ -51,6 +51,9 @@ export default function SettingsPage() {
     process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335'
   );
   const [metaAppSecret, setMetaAppSecret] = useState('');
+  const [configIdInput, setConfigIdInput] = useState(
+    process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812'
+  );
   const [tiktokClientKey, setTiktokClientKey] = useState(
     process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009'
   );
@@ -282,7 +285,7 @@ export default function SettingsPage() {
   };
 
   // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639 & Config ID)
-  const triggerMetaFacebookLogin = () => {
+  const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
     if (igIdentifier.trim()) {
       try {
         localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
@@ -290,7 +293,7 @@ export default function SettingsPage() {
     }
 
     const fbAppId = '1532121481550639';
-    const configId = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
+    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812');
 
     if (!fbAppId || fbAppId.length < 5) {
       setShowSetupGuide(true);
@@ -532,13 +535,22 @@ export default function SettingsPage() {
               {/* Meta Business Login Button from Screenshot 2 */}
               <button
                 type="button"
-                onClick={triggerMetaFacebookLogin}
+                onClick={() => triggerMetaFacebookLogin(false)}
                 className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
                 </svg>
                 login with meta
+              </button>
+
+              {/* Direct Scopes Button (Bypasses email check completely) */}
+              <button
+                type="button"
+                onClick={() => triggerMetaFacebookLogin(true)}
+                className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                login with direct scopes (bypasses email)
               </button>
             </div>
           </div>
