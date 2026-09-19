@@ -73,7 +73,7 @@ export async function GET(request: Request) {
   const redirectUri = `${origin}/api/auth/callback/facebook`;
 
   const appId = process.env.FACEBOOK_APP_ID || '1532121481550639';
-  const appSecret = process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f';
+  const appSecret = process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f';
 
   // Strip trailing '#_' if present
   const cleanCode = code.replace(/#_.*$/, '');
