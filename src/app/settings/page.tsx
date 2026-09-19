@@ -31,9 +31,12 @@ export default function SettingsPage() {
 
   // Card Design States matching familiar mobile login UI
   const [tiktokTab, setTiktokTab] = useState<'email' | 'phone'>('email');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showIgPassword, setShowIgPassword] = useState(false);
+  const [showTtPassword, setShowTtPassword] = useState(false);
   const [igIdentifier, setIgIdentifier] = useState('');
+  const [igPassword, setIgPassword] = useState('');
   const [ttIdentifier, setTtIdentifier] = useState('');
+  const [ttPassword, setTtPassword] = useState('');
 
   // Modal States
   const [showSetupGuide, setShowSetupGuide] = useState(false);
@@ -478,18 +481,19 @@ export default function SettingsPage() {
 
               <div className="relative">
                 <input
-                  type={showPassword ? "text" : "password"}
-                  readOnly
-                  value={igAccount ? "••••••••••••••••••••" : ""}
-                  placeholder={igAccount ? "60-Day Long-Lived Token Active" : "Password / Secure Token"}
+                  type={showIgPassword ? "text" : "password"}
+                  value={igAccount ? "••••••••••••••••••••" : igPassword}
+                  onChange={(e) => setIgPassword(e.target.value)}
+                  readOnly={!!igAccount}
+                  placeholder={igAccount ? "60-Day Long-Lived Token Active" : "Password"}
                   className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowIgPassword(!showIgPassword)}
                   className="absolute right-3 top-3 text-neutral-500 hover:text-neutral-300"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showIgPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
 
@@ -631,18 +635,19 @@ export default function SettingsPage() {
 
               <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between">
                 <input
-                  type={showPassword ? "text" : "password"}
-                  readOnly
-                  value={ttAccount ? "••••••••••••••••••••" : ""}
+                  type={showTtPassword ? "text" : "password"}
+                  value={ttAccount ? "••••••••••••••••••••" : ttPassword}
+                  onChange={(e) => setTtPassword(e.target.value)}
+                  readOnly={!!ttAccount}
                   placeholder={ttAccount ? "365-Day Refresh Token Active" : "Password"}
                   className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowTtPassword(!showTtPassword)}
                   className="text-gray-400 hover:text-gray-600 ml-2"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showTtPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
 
