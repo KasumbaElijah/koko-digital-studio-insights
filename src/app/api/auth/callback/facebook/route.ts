@@ -20,18 +20,30 @@ export async function GET(request: Request) {
       const url = new URL(request.url);
       code = url.searchParams.get('code');
       clientId = url.searchParams.get('state') || url.searchParams.get('clientId') || clientId;
-      error = url.searchParams.get('error');
+      error = url.searchParams.get('error') || url.searchParams.get('error_message');
+      const errorMsg = url.searchParams.get('error_message') || url.searchParams.get('error_description') || error;
       origin = url.origin;
+
+      if (error || !code) {
+        return new Response(
+          `<!DOCTYPE html>
+          <html>
+            <head><meta charset="utf-8"/><title>Meta Notice</title></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
+              <div style="max-width: 440px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 24px;">
+                <div style="width: 50px; height: 50px; line-height: 50px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 24px; margin: 0 auto 16px;">!</div>
+                <h3 style="font-size: 18px; font-weight: 700; margin: 0 0 10px;">Meta Notice</h3>
+                <p style="color: #aaa; font-size: 13px; margin: 0 0 20px; line-height: 1.5;">${errorMsg || 'Authorization was canceled or did not return an authorization code.'}</p>
+                <a href="${origin}/settings" style="display: block; padding: 12px; background: #fff; color: #000; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 13px;">Return to Settings</a>
+              </div>
+            </body>
+          </html>`,
+          { headers: { 'Content-Type': 'text/html' } }
+        );
+      }
     } catch (e) {
       console.warn('URL parse warning:', e);
     }
-  }
-
-  if (error || !code) {
-    return new Response(
-      `<html><body><script>alert("Meta authorization canceled or completed."); window.close();</script></body></html>`,
-      { headers: { 'Content-Type': 'text/html' } }
-    );
   }
 
   const appId = process.env.FACEBOOK_APP_ID || '1532121481550639';
