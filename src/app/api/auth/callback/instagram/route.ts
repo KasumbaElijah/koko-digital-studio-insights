@@ -12,7 +12,7 @@ import { exchangeInstagramLongLivedToken } from '@/lib/api/auth';
 
 export async function GET(request: Request) {
   let code: string | null = null;
-  let clientId = 'client-bulungi-town';
+  let clientId = '';
   let error: string | null = null;
   let errorDescription: string | null = null;
   let origin = 'http://localhost:3000';

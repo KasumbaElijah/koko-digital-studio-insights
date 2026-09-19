@@ -8,7 +8,7 @@ import { prisma, serializeData } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   let code = null;
-  let clientId = 'client-bulungi-town';
+  let clientId = '';
   let error = null;
   let origin = 'http://localhost:3000';
 

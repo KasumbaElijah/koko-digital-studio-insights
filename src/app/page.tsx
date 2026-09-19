@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import axios from 'axios';
 import { ClientData, MonthlyReportData } from '@/lib/types';
-import { INITIAL_CLIENTS, INITIAL_REPORTS, EMPTY_REPORT } from '@/lib/mockData';
+import { EMPTY_REPORT } from '@/lib/mockData';
 import { getFormatDistribution, getPlatformDistribution } from '@/lib/analytics';
 import { ControlBar } from '@/components/dashboard/ControlBar';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
@@ -13,13 +14,13 @@ import { TopContentSection } from '@/components/dashboard/TopContentSection';
 import { StrategyEditor } from '@/components/dashboard/StrategyEditor';
 import { PrintableReport } from '@/components/pdf/PrintableReport';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
-import { Eye, Layers, Sparkles } from 'lucide-react';
+import { Eye, Layers, Sparkles, Plus, AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
-  const [clients, setClients] = useState<ClientData[]>(INITIAL_CLIENTS);
-  const [selectedClientId, setSelectedClientId] = useState<string>('client-bulungi-town');
+  const [clients, setClients] = useState<ClientData[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
 
-  const [report, setReport] = useState<MonthlyReportData>(INITIAL_REPORTS['client-bulungi-town'] || EMPTY_REPORT);
+  const [report, setReport] = useState<MonthlyReportData>(EMPTY_REPORT);
   const [startDate, setStartDate] = useState<string>('2026-06-11');
   const [endDate, setEndDate] = useState<string>('2026-07-10');
 
@@ -53,6 +54,11 @@ export default function DashboardPage() {
   // 2. Load connected platforms from localStorage for active client
   useEffect(() => {
     function loadConnectedState() {
+      if (!selectedClientId) {
+        setConnectedPlatforms({});
+        return;
+      }
+
       try {
         const stored = localStorage.getItem('koko_connected_social_accounts');
         let ig: any = null;
@@ -79,25 +85,42 @@ export default function DashboardPage() {
     loadConnectedState();
   }, [selectedClientId]);
 
-  // 3. Load client list from DB + localStorage
+  // 3. Load client list from DB + localStorage, strictly filtering out deleted & mock accounts
   useEffect(() => {
     async function fetchClients() {
-      let base = [...INITIAL_CLIENTS];
+      let deletedIds: string[] = ['client-bulungi-town', 'client-safi-bay'];
+      try {
+        const storedDeleted = localStorage.getItem('koko_deleted_client_ids');
+        if (storedDeleted) {
+          const parsed = JSON.parse(storedDeleted);
+          if (Array.isArray(parsed)) {
+            deletedIds = Array.from(new Set([...deletedIds, ...parsed]));
+          }
+        }
+        localStorage.setItem('koko_deleted_client_ids', JSON.stringify(deletedIds));
+      } catch (e) {}
+
+      const deletedSet = new Set(deletedIds);
+
+      let base: ClientData[] = [];
       try {
         const res = await axios.get('/api/clients');
-        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-          base = res.data;
+        if (res.data && Array.isArray(res.data)) {
+          base = res.data.filter((c: ClientData) => !deletedSet.has(c.id));
         }
       } catch (err) {
-        console.warn('API fetch clients error, fallback to mock clients:', err);
+        console.warn('API fetch clients error:', err);
       }
 
       try {
         const localCustom = localStorage.getItem('koko_custom_clients');
         if (localCustom) {
           const parsed: ClientData[] = JSON.parse(localCustom);
+          const validCustom = parsed.filter((c) => !deletedSet.has(c.id));
+          localStorage.setItem('koko_custom_clients', JSON.stringify(validCustom));
+
           const existingIds = new Set(base.map((c) => c.id));
-          const newOnes = parsed.filter((c) => !existingIds.has(c.id));
+          const newOnes = validCustom.filter((c) => !existingIds.has(c.id));
           base = [...base, ...newOnes];
         }
       } catch (e) {
@@ -108,11 +131,11 @@ export default function DashboardPage() {
         try {
           const params = new URLSearchParams(window.location.search);
           const urlCid = params.get('clientId');
-          if (urlCid && !base.some((c) => c.id === urlCid)) {
+          if (urlCid && !deletedSet.has(urlCid) && !base.some((c) => c.id === urlCid)) {
             base.push({
               id: urlCid,
               name: 'Connected Client',
-              logoUrl: '/logos/bulungi-town.svg',
+              logoUrl: '/logos/default.svg',
               createdAt: new Date().toISOString(),
               socialAccounts: [],
             });
@@ -121,6 +144,14 @@ export default function DashboardPage() {
       }
 
       setClients(base);
+
+      // Select active client ID
+      setSelectedClientId((prev) => {
+        if (prev && base.some((c) => c.id === prev)) {
+          return prev;
+        }
+        return base[0]?.id || '';
+      });
     }
     fetchClients();
   }, []);
@@ -128,6 +159,11 @@ export default function DashboardPage() {
   // 4. Fetch report data when client or dates change
   useEffect(() => {
     async function fetchReport() {
+      if (!selectedClientId) {
+        setReport(EMPTY_REPORT);
+        return;
+      }
+
       setIsLoading(true);
       try {
         // Read cached report from localStorage first for instant load
@@ -150,8 +186,8 @@ export default function DashboardPage() {
           } catch (e) {}
         }
       } catch (err) {
-        console.warn('API fetch report error, using mock fallback:', err);
-        setReport(INITIAL_REPORTS[selectedClientId] || INITIAL_REPORTS['client-bulungi-town'] || EMPTY_REPORT);
+        console.warn('API fetch report notice:', err);
+        setReport(EMPTY_REPORT);
       } finally {
         setIsLoading(false);
       }
@@ -160,19 +196,19 @@ export default function DashboardPage() {
   }, [selectedClientId, startDate, endDate]);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) ||
-    clients[0] ||
-    INITIAL_CLIENTS[0] || {
-      id: selectedClientId || 'client-default',
-      name: 'Client',
+    clients[0] || {
+      id: selectedClientId || '',
+      name: 'Client Workspace',
       logoUrl: '',
       createdAt: '',
       socialAccounts: [],
     };
 
-  const safeReport = report || INITIAL_REPORTS[selectedClientId] || INITIAL_REPORTS['client-bulungi-town'] || EMPTY_REPORT;
+  const safeReport = report || EMPTY_REPORT;
 
   // Handle dynamic social media API sync
   const handleLiveSync = async () => {
+    if (!selectedClientId) return;
     setIsSyncing(true);
     try {
       let igToken = '';
@@ -220,10 +256,10 @@ export default function DashboardPage() {
 
   // Auto-sync live metrics if Instagram is connected and report is empty
   useEffect(() => {
-    if (connectedPlatforms.instagram && (Number(safeReport.igViews) === 0 || safeReport.id === 'report-empty-state')) {
+    if (connectedPlatforms.instagram && selectedClientId && (Number(safeReport.igViews) === 0 || safeReport.id === 'report-empty-state')) {
       handleLiveSync();
     }
-  }, [connectedPlatforms.instagram]);
+  }, [connectedPlatforms.instagram, selectedClientId]);
 
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {
@@ -308,47 +344,72 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-medium">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Showing data for <span className="font-bold text-gray-800">{selectedClient.name}</span>
-            </div>
+            {clients.length > 0 && selectedClient && (
+              <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-medium">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Showing data for <span className="font-bold text-gray-800">{selectedClient.name}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* DASHBOARD VIEW */}
         {activeTab === 'dashboard' && (
           <div className="no-print space-y-6">
-            {/* KPI Metrics Grid */}
-            <KPIGrid report={safeReport} />
-
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
-                  CONTENT FORMAT
+            {clients.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-3xl p-10 sm:p-12 text-center shadow-sm max-w-2xl mx-auto my-8">
+                <div className="w-16 h-16 bg-neutral-100 rounded-2xl flex items-center justify-center mx-auto mb-5 text-gray-800">
+                  <AlertCircle className="w-8 h-8 text-neutral-500" />
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900 font-heading mb-2">
+                  No Client Accounts Found
                 </h3>
-                <FormatBarChart data={formatData} />
+                <p className="text-xs sm:text-sm text-gray-500 leading-relaxed max-w-md mx-auto mb-6">
+                  Default mock accounts have been removed. Create your first client account in Settings to connect real Instagram and TikTok profiles and generate live analytics reports.
+                </p>
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-black hover:bg-neutral-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer active:scale-98"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Client Account in Settings
+                </Link>
               </div>
+            ) : (
+              <>
+                {/* KPI Metrics Grid */}
+                <KPIGrid report={safeReport} />
 
-              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
-                  CONTENT DISTRIBUTION
-                </h3>
-                <DistributionPieChart data={distributionData} />
-              </div>
-            </div>
+                {/* Charts Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                    <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
+                      CONTENT FORMAT
+                    </h3>
+                    <FormatBarChart data={formatData} />
+                  </div>
 
-            {/* Top Content Previews */}
-            <TopContentSection clientName={selectedClient.name} posts={safeReport.posts || []} />
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                    <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
+                      CONTENT DISTRIBUTION
+                    </h3>
+                    <DistributionPieChart data={distributionData} />
+                  </div>
+                </div>
 
-            {/* Strategy Editors */}
-            <StrategyEditor
-              reportId={safeReport.id || 'report-default'}
-              initialGoals={safeReport.goals || []}
-              initialInsights={safeReport.insights || []}
-              initialNextSteps={safeReport.nextSteps || []}
-              onSaveStrategy={handleSaveStrategy}
-            />
+                {/* Top Content Previews */}
+                <TopContentSection clientName={selectedClient.name} posts={safeReport.posts || []} />
+
+                {/* Strategy Editors */}
+                <StrategyEditor
+                  reportId={safeReport.id || 'report-default'}
+                  initialGoals={safeReport.goals || []}
+                  initialInsights={safeReport.insights || []}
+                  initialNextSteps={safeReport.nextSteps || []}
+                  onSaveStrategy={handleSaveStrategy}
+                />
+              </>
+            )}
           </div>
         )}
 

@@ -23,8 +23,8 @@ import { INITIAL_CLIENTS } from '@/lib/mockData';
 import { ClientData, SocialAccountData } from '@/lib/types';
 
 export default function SettingsPage() {
-  const [clients, setClients] = useState<ClientData[]>(INITIAL_CLIENTS);
-  const [selectedClientId, setSelectedClientId] = useState<string>(INITIAL_CLIENTS[0].id);
+  const [clients, setClients] = useState<ClientData[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -59,7 +59,7 @@ export default function SettingsPage() {
   );
   const [tiktokClientSecret, setTiktokClientSecret] = useState('');
 
-  const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || INITIAL_CLIENTS[0];
+  const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || null;
 
   // Helper to open centered modal popup window directly over dashboard
   const openCenteredPopup = (url: string, title: string) => {
@@ -76,23 +76,42 @@ export default function SettingsPage() {
 
   // Helper to load clients from API + localStorage
   const loadClientsList = async () => {
-    let baseClients = INITIAL_CLIENTS;
+    // 1. Maintain set of deleted client IDs (automatically purges legacy mock defaults)
+    let deletedIds: string[] = ['client-bulungi-town', 'client-safi-bay'];
+    try {
+      const storedDeleted = localStorage.getItem('koko_deleted_client_ids');
+      if (storedDeleted) {
+        const parsed = JSON.parse(storedDeleted);
+        if (Array.isArray(parsed)) {
+          deletedIds = Array.from(new Set([...deletedIds, ...parsed]));
+        }
+      }
+      localStorage.setItem('koko_deleted_client_ids', JSON.stringify(deletedIds));
+    } catch (e) {}
+
+    const deletedSet = new Set(deletedIds);
+
+    let baseClients: ClientData[] = [];
     try {
       const clientsRes = await axios.get('/api/clients');
-      if (clientsRes.data && Array.isArray(clientsRes.data) && clientsRes.data.length > 0) {
-        baseClients = clientsRes.data;
+      if (clientsRes.data && Array.isArray(clientsRes.data)) {
+        baseClients = clientsRes.data.filter((c: ClientData) => !deletedSet.has(c.id));
       }
     } catch (e) {
       console.warn('Clients API fetch fallback:', e);
     }
 
-    // Merge custom clients saved in localStorage
+    // Merge custom clients saved in localStorage, strictly filtering out deleted & mock accounts
     try {
       const localCustom = localStorage.getItem('koko_custom_clients');
       if (localCustom) {
         const parsed: ClientData[] = JSON.parse(localCustom);
+        const validCustom = parsed.filter((c) => !deletedSet.has(c.id));
+        // Overwrite localStorage with purged list
+        localStorage.setItem('koko_custom_clients', JSON.stringify(validCustom));
+
         const existingIds = new Set(baseClients.map((c) => c.id));
-        const newOnes = parsed.filter((c) => !existingIds.has(c.id));
+        const newOnes = validCustom.filter((c) => !existingIds.has(c.id));
         baseClients = [...baseClients, ...newOnes];
       }
     } catch (e) {
@@ -100,6 +119,14 @@ export default function SettingsPage() {
     }
 
     setClients(baseClients);
+
+    // Synchronize selected client ID
+    setSelectedClientId((prev) => {
+      if (prev && baseClients.some((c) => c.id === prev)) {
+        return prev;
+      }
+      return baseClients[0]?.id || '';
+    });
   };
 
   useEffect(() => {
@@ -227,6 +254,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function loadSocialAccounts() {
+      if (!selectedClientId) {
+        setSocialAccounts([]);
+        return;
+      }
       setIsLoading(true);
       try {
         let accounts: SocialAccountData[] = [];
@@ -237,7 +268,7 @@ export default function SettingsPage() {
           }
         } catch (e) {
           console.warn('Social accounts API fetch fallback:', e);
-          accounts = INITIAL_CLIENTS.find((c) => c.id === selectedClientId)?.socialAccounts || [];
+          accounts = [];
         }
 
         // Merge persistent accounts from browser localStorage
@@ -282,38 +313,64 @@ export default function SettingsPage() {
     };
 
     try {
-      await axios.post('/api/clients', {
+      const res = await axios.post('/api/clients', {
         name: newClientObj.name,
         logoUrl: newClientObj.logoUrl,
       });
+      if (res.data?.id) {
+        newClientObj.id = res.data.id;
+      }
     } catch (err) {
       console.warn('POST /api/clients fallback to localStorage:', err);
     }
 
-    // Save to localStorage
+    // Save to localStorage and ensure it's removed from deleted list
     try {
       const localCustom = localStorage.getItem('koko_custom_clients');
       const currentList: ClientData[] = localCustom ? JSON.parse(localCustom) : [];
-      currentList.push(newClientObj);
-      localStorage.setItem('koko_custom_clients', JSON.stringify(currentList));
+      const filtered = currentList.filter((c) => c.id !== newClientObj.id);
+      filtered.push(newClientObj);
+      localStorage.setItem('koko_custom_clients', JSON.stringify(filtered));
+
+      const storedDeleted = localStorage.getItem('koko_deleted_client_ids');
+      if (storedDeleted) {
+        const deletedArr: string[] = JSON.parse(storedDeleted);
+        localStorage.setItem(
+          'koko_deleted_client_ids',
+          JSON.stringify(deletedArr.filter((id) => id !== newClientObj.id))
+        );
+      }
     } catch (e) {
       console.warn('Error saving custom client to localStorage:', e);
     }
 
-    const updatedClients = [...clients, newClientObj];
+    const updatedClients = [...clients.filter((c) => c.id !== newClientObj.id), newClientObj];
     setClients(updatedClients);
-    setSelectedClientId(newId);
+    setSelectedClientId(newClientObj.id);
     setNewClientName('');
     setNewClientLogo('');
     setShowAddClientModal(false);
   };
 
-  // Delete Custom Client Account
-  const handleDeleteClient = (clientId: string) => {
+  // Delete Client Account permanently
+  const handleDeleteClient = async (clientId: string) => {
     if (!confirm('Are you sure you want to remove this client account?')) return;
+
+    // 1. Record ID in koko_deleted_client_ids permanently
+    try {
+      const stored = localStorage.getItem('koko_deleted_client_ids');
+      const list: string[] = stored ? JSON.parse(stored) : ['client-bulungi-town', 'client-safi-bay'];
+      if (!list.includes(clientId)) {
+        list.push(clientId);
+      }
+      localStorage.setItem('koko_deleted_client_ids', JSON.stringify(list));
+    } catch (e) {}
+
+    // 2. Remove from local state
     const updated = clients.filter((c) => c.id !== clientId);
     setClients(updated);
 
+    // 3. Remove from koko_custom_clients
     try {
       const localCustom = localStorage.getItem('koko_custom_clients');
       if (localCustom) {
@@ -325,8 +382,30 @@ export default function SettingsPage() {
       console.warn('Error updating custom clients in localStorage:', e);
     }
 
-    if (selectedClientId === clientId && updated.length > 0) {
-      setSelectedClientId(updated[0].id);
+    // 4. Remove associated social accounts and cached report
+    try {
+      localStorage.removeItem(`koko_report_${clientId}`);
+      localStorage.removeItem(`koko_active_ig_token_${clientId}`);
+      localStorage.removeItem(`koko_active_ig_account_${clientId}`);
+      localStorage.removeItem(`koko_active_ig_username_${clientId}`);
+      const storedAccounts = localStorage.getItem('koko_connected_social_accounts');
+      if (storedAccounts) {
+        const accounts: SocialAccountData[] = JSON.parse(storedAccounts);
+        const remaining = accounts.filter((a) => a.clientId !== clientId);
+        localStorage.setItem('koko_connected_social_accounts', JSON.stringify(remaining));
+      }
+    } catch (e) {}
+
+    // 5. Fire DB delete request
+    try {
+      await axios.delete(`/api/clients?id=${clientId}`);
+    } catch (apiErr) {
+      console.warn('API client delete call notice:', apiErr);
+    }
+
+    // 6. Update selectedClientId
+    if (selectedClientId === clientId) {
+      setSelectedClientId(updated[0]?.id || '');
     }
   };
 
@@ -341,6 +420,11 @@ export default function SettingsPage() {
 
   // 1. Trigger Official Meta / Instagram Business Login (Supports full Insights & Analytics)
   const triggerInstagramDirectLogin = () => {
+    if (!selectedClientId) {
+      alert('Please create or select a client account first.');
+      setShowAddClientModal(true);
+      return;
+    }
     if (igIdentifier.trim()) {
       try {
         localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
@@ -352,6 +436,11 @@ export default function SettingsPage() {
 
   // 2. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
   const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
+    if (!selectedClientId) {
+      alert('Please create or select a client account first.');
+      setShowAddClientModal(true);
+      return;
+    }
     if (igIdentifier.trim()) {
       try {
         localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
@@ -379,6 +468,11 @@ export default function SettingsPage() {
 
   // Trigger Direct TikTok OAuth Login Flow with PKCE
   const triggerTikTokOAuthLogin = async () => {
+    if (!selectedClientId) {
+      alert('Please create or select a client account first.');
+      setShowAddClientModal(true);
+      return;
+    }
     const clientKey = tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
 
     if (!clientKey || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
@@ -468,41 +562,54 @@ export default function SettingsPage() {
 
       {/* Target Client Switcher & Add Client Control */}
       <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-wrap">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Client Account:</label>
-          <select
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black p-2.5 outline-none cursor-pointer"
-          >
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+        {clients.length > 0 ? (
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Client Account:</label>
+            <select
+              value={selectedClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+              className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black p-2.5 outline-none cursor-pointer"
+            >
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
 
-          <button
-            onClick={() => setShowAddClientModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add New Client
-          </button>
-        </div>
+            <button
+              onClick={() => setShowAddClientModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add New Client
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-semibold text-gray-700">No client accounts added yet</span>
+            <button
+              onClick={() => setShowAddClientModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Client Account
+            </button>
+          </div>
+        )}
 
-        <div className="flex items-center gap-3 text-xs font-medium text-gray-500">
-          <span>Connecting for <strong className="text-gray-900">{selectedClient.name}</strong></span>
-          {clients.length > 1 && (
+        {selectedClient && (
+          <div className="flex items-center gap-3 text-xs font-medium text-gray-500">
+            <span>Connecting for <strong className="text-gray-900">{selectedClient.name}</strong></span>
             <button
               onClick={() => handleDeleteClient(selectedClient.id)}
-              title="Remove this client"
-              className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-all"
+              title="Remove this client account"
+              className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Connected Accounts Grid - Familiar Mobile Card Experiences */}
@@ -517,7 +624,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-semibold text-neutral-400">Workspace:</span>
-                <span className="text-[11px] font-bold text-neutral-200">{selectedClient.name}</span>
+                <span className="text-[11px] font-bold text-neutral-200">{selectedClient ? selectedClient.name : 'No Client Selected'}</span>
               </div>
 
               {igAccount ? (

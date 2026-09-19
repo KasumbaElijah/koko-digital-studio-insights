@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
-import { INITIAL_CLIENTS } from '@/lib/mockData';
-
 
 export async function GET(request: Request) {
   let clientId: string | null = null;
@@ -25,13 +23,10 @@ export async function GET(request: Request) {
       return NextResponse.json(serializeData(accounts));
     }
 
-    const mockAccounts = INITIAL_CLIENTS.flatMap((c) => c.socialAccounts || []);
-    const filteredMock = clientId ? mockAccounts.filter((a) => a.clientId === clientId) : mockAccounts;
-    return NextResponse.json(filteredMock);
+    return NextResponse.json([]);
   } catch (error) {
-    console.warn('Prisma DB query social accounts error, returning fallback:', error);
-    const mockAccounts = INITIAL_CLIENTS.flatMap((c) => c.socialAccounts || []);
-    return NextResponse.json(mockAccounts);
+    console.warn('Prisma DB query social accounts error, returning empty list:', error);
+    return NextResponse.json([]);
   }
 }
 

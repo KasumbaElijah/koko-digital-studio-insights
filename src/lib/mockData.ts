@@ -1,25 +1,10 @@
 import { MonthlyReportData, ClientData } from './types';
 
-export const INITIAL_CLIENTS: ClientData[] = [
-  {
-    id: 'client-bulungi-town',
-    name: 'Bulungi Town',
-    logoUrl: '/logos/bulungi-town.svg',
-    createdAt: '2026-06-01T00:00:00Z',
-    socialAccounts: [],
-  },
-  {
-    id: 'client-safi-bay',
-    name: 'Safi Bay',
-    logoUrl: '/logos/safi-bay.svg',
-    createdAt: '2026-06-01T00:00:00Z',
-    socialAccounts: [],
-  },
-];
+export const INITIAL_CLIENTS: ClientData[] = [];
 
 export const EMPTY_REPORT: MonthlyReportData = {
   id: 'report-empty-state',
-  clientId: 'client-bulungi-town',
+  clientId: '',
   startDate: '2026-06-11',
   endDate: '2026-07-10',
   goals: [
@@ -42,18 +27,15 @@ export const EMPTY_REPORT: MonthlyReportData = {
   posts: [],
 };
 
-export const INITIAL_REPORTS: Record<string, MonthlyReportData> = {
-  'client-bulungi-town': {
+export const INITIAL_REPORTS: Record<string, MonthlyReportData> = {};
+
+export function createEmptyReport(clientId: string = ''): MonthlyReportData {
+  return {
     ...EMPTY_REPORT,
-    id: 'report-bulungi-town',
-    clientId: 'client-bulungi-town',
-  },
-  'client-safi-bay': {
-    ...EMPTY_REPORT,
-    id: 'report-safi-bay',
-    clientId: 'client-safi-bay',
-  },
-};
+    id: clientId ? `report-${clientId}` : 'report-empty-state',
+    clientId,
+  };
+}
 
 export const MOCK_FORMAT_COUNTS = [
   { name: 'Image', value: 0 },

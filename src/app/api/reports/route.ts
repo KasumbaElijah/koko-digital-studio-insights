@@ -1,39 +1,40 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
-import { INITIAL_REPORTS } from '@/lib/mockData';
-
+import { createEmptyReport } from '@/lib/mockData';
 
 export async function GET(request: Request) {
   try {
-    let clientId = 'client-bulungi-town';
+    let clientId = '';
     try {
       const { searchParams } = new URL(request.url);
-      clientId = searchParams.get('clientId') || clientId;
+      clientId = searchParams.get('clientId') || '';
     } catch (e) {
       console.warn('URL parse warning on static export:', e);
     }
 
-    try {
-      const reports = await prisma.monthlyReport.findMany({
-        where: { clientId },
-        include: {
-          client: true,
-          posts: true,
-        },
-        orderBy: { startDate: 'desc' },
-      });
+    if (clientId) {
+      try {
+        const reports = await prisma.monthlyReport.findMany({
+          where: { clientId },
+          include: {
+            client: true,
+            posts: true,
+          },
+          orderBy: { startDate: 'desc' },
+        });
 
-      if (reports.length > 0) {
-        return NextResponse.json(serializeData(reports));
+        if (reports.length > 0) {
+          return NextResponse.json(serializeData(reports));
+        }
+      } catch (dbErr) {
+        console.warn('Prisma DB query reports error, returning fallback:', dbErr);
       }
-    } catch (dbErr) {
-      console.warn('Prisma DB query reports error, returning fallback:', dbErr);
     }
 
-    const fallbackReport = INITIAL_REPORTS[clientId] || Object.values(INITIAL_REPORTS)[0];
+    const fallbackReport = createEmptyReport(clientId);
     return NextResponse.json([fallbackReport]);
   } catch (error) {
     console.error('Error fetching reports:', error);
-    return NextResponse.json(Object.values(INITIAL_REPORTS));
+    return NextResponse.json([createEmptyReport('')]);
   }
 }

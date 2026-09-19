@@ -51,17 +51,26 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         {/* Client Switcher */}
         <div className="flex items-center gap-3">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Client:</label>
-          <select
-            value={selectedClientId}
-            onChange={(e) => onSelectClient(e.target.value)}
-            className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black block p-2.5 outline-none cursor-pointer"
-          >
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          {clients.length > 0 ? (
+            <select
+              value={selectedClientId}
+              onChange={(e) => onSelectClient(e.target.value)}
+              className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black block p-2.5 outline-none cursor-pointer"
+            >
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-all cursor-pointer"
+            >
+              + Add Client Account
+            </Link>
+          )}
           {connectedPlatforms?.instagram ? (
             <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

@@ -7,7 +7,7 @@ import { INITIAL_REPORTS } from '@/lib/mockData';
 
 export async function POST(request: Request) {
   try {
-    let clientId = 'client-bulungi-town';
+    let clientId = '';
     let startDateStr = '2026-06-11';
     let endDateStr = '2026-07-10';
     let bodyAccessToken = '';

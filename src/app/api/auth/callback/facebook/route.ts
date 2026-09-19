@@ -11,7 +11,7 @@ import { exchangeMetaLongLivedToken, exchangeInstagramLongLivedToken } from '@/l
 
 export async function GET(request: Request) {
   let code = null;
-  let clientId = 'client-bulungi-town';
+  let clientId = '';
   let error = null;
 
   const host = request?.headers?.get('x-forwarded-host') || request?.headers?.get('host') || '';
