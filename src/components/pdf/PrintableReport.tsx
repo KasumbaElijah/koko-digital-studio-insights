@@ -19,34 +19,90 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
   const distributionData = getPlatformDistribution(safeReport.posts || []);
   const topPosts = getTopPerformingPosts(safeReport.posts || [], 3);
 
-  const formatDateString = (dateStr?: string | null) => {
-    if (!dateStr) return '';
+  const parseSafeDate = (dateVal?: string | Date | null): Date | null => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+    const str = String(dateVal).trim();
+    if (!str) return null;
+
+    // Parse YYYY-MM-DD in local time to avoid UTC-midnight timezone rollback
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const [year, month, day] = str.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const formatDateString = (dateVal?: string | Date | null) => {
+    if (!dateVal) return '';
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return String(dateStr);
+      const date = parseSafeDate(dateVal);
+      if (!date) return String(dateVal);
       const day = date.getDate();
       const month = date.toLocaleString('en-US', { month: 'short' });
       const suffix = day === 1 || day === 21 || day === 31 ? 'st' : day === 2 || day === 22 ? 'nd' : day === 3 || day === 23 ? 'rd' : 'th';
       return `${day}${suffix} ${month}`;
     } catch {
-      return String(dateStr);
+      return String(dateVal);
     }
   };
 
-  const formattedDateRange = `${formatDateString(safeReport.startDate)} - ${formatDateString(safeReport.endDate)}`;
+  const formattedDateRange = React.useMemo(() => {
+    if (!safeReport.startDate && !safeReport.endDate) return '';
+    if (!safeReport.startDate) return formatDateString(safeReport.endDate);
+    if (!safeReport.endDate) return formatDateString(safeReport.startDate);
+
+    try {
+      const s = parseSafeDate(safeReport.startDate);
+      const e = parseSafeDate(safeReport.endDate);
+      if (s && e) {
+        let [earlier, later] = s.getTime() <= e.getTime() ? [s, e] : [e, s];
+        const sYear = earlier.getFullYear();
+        const eYear = later.getFullYear();
+        if (sYear !== eYear) {
+          return `${formatDateString(earlier)} ${sYear} - ${formatDateString(later)} ${eYear}`;
+        }
+        return `${formatDateString(earlier)} - ${formatDateString(later)}`;
+      }
+    } catch {}
+    return `${formatDateString(safeReport.startDate)} - ${formatDateString(safeReport.endDate)}`;
+  }, [safeReport.startDate, safeReport.endDate]);
 
   const reportTitle = React.useMemo(() => {
     try {
-      const dateToUse = safeReport.endDate || safeReport.startDate;
-      if (dateToUse) {
-        const d = new Date(dateToUse);
-        if (!isNaN(d.getTime())) {
-          return `${d.toLocaleString('en-US', { month: 'long' })} Report`;
+      const start = parseSafeDate(safeReport.startDate);
+      const end = parseSafeDate(safeReport.endDate);
+
+      if (start && end) {
+        let [earlier, later] = start.getTime() <= end.getTime() ? [start, end] : [end, start];
+        const startMonth = earlier.toLocaleString('en-US', { month: 'long' });
+        const endMonth = later.toLocaleString('en-US', { month: 'long' });
+        const startYear = earlier.getFullYear();
+        const endYear = later.getFullYear();
+
+        // Case 1: Same month and year (e.g. "September Report")
+        if (startMonth === endMonth && startYear === endYear) {
+          return `${startMonth} Report`;
         }
+
+        // Case 2: Different months, same year (e.g. "January to September Report")
+        if (startYear === endYear) {
+          return `${startMonth} to ${endMonth} Report`;
+        }
+
+        // Case 3: Different years (e.g. "December 2024 to February 2025 Report")
+        return `${startMonth} ${startYear} to ${endMonth} ${endYear} Report`;
+      }
+
+      const single = end || start;
+      if (single) {
+        return `${single.toLocaleString('en-US', { month: 'long' })} Report`;
       }
     } catch {}
     return 'Monthly Performance Report';
-  }, [safeReport.endDate, safeReport.startDate]);
+  }, [safeReport.startDate, safeReport.endDate]);
 
   const igGrowth = safeReport.igFollowersGrowth != null ? Number(safeReport.igFollowersGrowth) : 0;
   const ttGrowth = safeReport.ttFollowersGrowth != null ? Number(safeReport.ttFollowersGrowth) : 0;
@@ -81,7 +137,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
               </svg>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-gray-900 font-heading text-center mb-8">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-gray-900 font-heading text-center mb-8 leading-tight">
               {reportTitle}
             </h1>
 

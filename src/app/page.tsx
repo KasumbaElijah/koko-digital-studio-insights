@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { ClientData, MonthlyReportData } from '@/lib/types';
@@ -210,7 +210,14 @@ export default function DashboardPage() {
       socialAccounts: [],
     };
 
-  const safeReport = report || EMPTY_REPORT;
+  const safeReport = useMemo(() => {
+    const base = report || EMPTY_REPORT;
+    return {
+      ...base,
+      startDate: startDate || base.startDate,
+      endDate: endDate || base.endDate,
+    };
+  }, [report, startDate, endDate]);
 
   // Handle dynamic social media API sync
   const handleLiveSync = async () => {
