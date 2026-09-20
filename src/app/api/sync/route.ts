@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     let bodyPlatformAccountId = '';
     let pageId = '';
 
+    let existingPostsFromClient: any[] = [];
     try {
       const body = await request.json();
       clientId = body.clientId || clientId;
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
       bodyAccessToken = body.accessToken || '';
       bodyPlatformAccountId = typeof body.platformAccountId === 'string' ? body.platformAccountId : '';
       pageId = typeof body.pageId === 'string' ? body.pageId : '';
+      if (Array.isArray(body.existingPosts)) {
+        existingPostsFromClient = body.existingPosts;
+      }
     } catch (e) {
       console.warn('Body parse warning on static export:', e);
     }
@@ -115,7 +119,14 @@ export async function POST(request: Request) {
       publishedAt: p.publishedAt,
     }));
 
-    const posts = [...igPosts, ...ttPosts];
+    const incomingPosts = [...igPosts, ...ttPosts];
+    const incomingIds = new Set(incomingPosts.map((p) => p.postId || p.id));
+    const preservedOldPosts = existingPostsFromClient.filter(
+      (p) => !incomingIds.has(p.postId || p.id)
+    );
+    const posts = incomingPosts.length > 0
+      ? [...incomingPosts, ...preservedOldPosts]
+      : existingPostsFromClient;
 
     const sDateObj = new Date(startDateStr);
     const eDateObj = new Date(endDateStr);

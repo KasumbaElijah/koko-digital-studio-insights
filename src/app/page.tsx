@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { ClientData, MonthlyReportData, MetaPageItem, ContentPostData } from '@/lib/types';
-import { EMPTY_REPORT } from '@/lib/mockData';
+import { EMPTY_REPORT, createEmptyReport } from '@/lib/mockData';
 import { getFormatDistribution, getPlatformDistribution, calculatePctChange } from '@/lib/analytics';
 import { ControlBar } from '@/components/dashboard/ControlBar';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
@@ -201,31 +201,26 @@ export default function DashboardPage() {
 
       setIsLoading(true);
       try {
-        // Helper to purge any legacy mock posts from browser storage
-        const purgeMockPosts = (postsList: any[]) => {
-          if (!Array.isArray(postsList)) return [];
-          return postsList.filter((p: any) => {
-            const isMock =
-              p.thumbnailUrl?.includes('unsplash.com') ||
-              p.postId?.startsWith('ig_mock_') ||
-              p.postId?.startsWith('tt_mock_') ||
-              p.postId?.startsWith('ig_synced_') ||
-              p.id?.startsWith('ig_mock_') ||
-              p.id?.startsWith('tt_mock_') ||
-              p.id?.startsWith('ig_synced_');
-            return !isMock;
-          });
-        };
-
         // Read cached report from localStorage first for instant load
+        let cachedReport: any = null;
+        let cachedPosts: any[] = [];
         try {
+          const storedPostsStr = localStorage.getItem(`koko_posts_${selectedClientId}`);
+          if (storedPostsStr) {
+            const parsedPosts = JSON.parse(storedPostsStr);
+            if (Array.isArray(parsedPosts) && parsedPosts.length > 0) {
+              cachedPosts = parsedPosts;
+            }
+          }
+
           const cached = localStorage.getItem(`koko_report_${selectedClientId}`);
           if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed && (parsed.id || parsed.igViews != null)) {
-              if (parsed.posts) {
-                parsed.posts = purgeMockPosts(parsed.posts);
+              if (cachedPosts.length > 0 && (!parsed.posts || parsed.posts.length === 0)) {
+                parsed.posts = cachedPosts;
               }
+              cachedReport = parsed;
               setReport(parsed);
             }
           }
@@ -233,18 +228,35 @@ export default function DashboardPage() {
 
         const res = await axios.get(`/api/reports?clientId=${selectedClientId}&startDate=${startDate}&endDate=${endDate}`);
         const reportData = Array.isArray(res.data) ? res.data[0] : res.data;
-        if (reportData && (reportData.igViews > 0 || !report?.igViews)) {
-          if (reportData.posts) {
-            reportData.posts = purgeMockPosts(reportData.posts);
-          }
-          setReport(reportData);
+
+        // ONLY replace state from server if server returned real data with posts or views > 0
+        const hasRealServerData = reportData && (
+          (Array.isArray(reportData.posts) && reportData.posts.length > 0) ||
+          Number(reportData.igViews) > 0 ||
+          Number(reportData.ttViews) > 0
+        );
+
+        if (hasRealServerData) {
+          const existingPosts = cachedReport?.posts || cachedPosts || [];
+          const incomingPosts = reportData.posts || [];
+          const incomingIds = new Set(incomingPosts.map((p: any) => p.postId || p.id));
+          const mergedPosts = [...incomingPosts, ...existingPosts.filter((p: any) => !incomingIds.has(p.postId || p.id))];
+          const finalReport = {
+            ...cachedReport,
+            ...reportData,
+            posts: mergedPosts.length > 0 ? mergedPosts : existingPosts,
+          };
+          setReport(finalReport);
           try {
-            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(reportData));
+            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(finalReport));
+            localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(finalReport.posts));
           } catch (e) {}
+        } else if (!cachedReport) {
+          const empty = createEmptyReport(selectedClientId);
+          setReport(empty);
         }
       } catch (err) {
         console.warn('API fetch report notice:', err);
-        setReport(EMPTY_REPORT);
       } finally {
         setIsLoading(false);
       }
@@ -369,11 +381,21 @@ export default function DashboardPage() {
       computedTtPctChange = calculatePctChange(ttPostsViews, ttPriorPostsViews);
     }
 
+    // Content Display Rule:
+    // If there are posts published within the selected date window, prioritize them.
+    // If the selected date window has 0 published posts, seamlessly fall back to allPosts
+    // so Content Format, Content Distribution, and Top Performing Content ALWAYS display
+    // the client's creative work rather than showing empty/broken state cards!
+    const displayPosts = currentPeriodPosts.length > 0 ? currentPeriodPosts : allPosts;
+
     return {
       ...base,
       startDate: sDate,
       endDate: eDate,
-      posts: currentPeriodPosts,
+      posts: displayPosts,
+      allPosts,
+      currentPeriodPosts,
+      hasPeriodPosts: currentPeriodPosts.length > 0,
       igViews: computedIgViews,
       igFollowersGrowth: computedIgFollowers,
       igEngagementRate: computedIgEngagementRate,
@@ -424,6 +446,7 @@ export default function DashboardPage() {
         accessToken: igToken,
         platformAccountId: igAccountId,
         pageId,
+        existingPosts: report?.posts || [],
       });
 
       const updatedReport = res.data?.report || (res.data?.id ? res.data : null);
@@ -433,15 +456,19 @@ export default function DashboardPage() {
           const newPosts = updatedReport.posts || [];
           const newPostIds = new Set(newPosts.map((p: any) => p.postId || p.id));
           const preservedPosts = existingPosts.filter((p: any) => !newPostIds.has(p.postId || p.id));
-          return {
+          const mergedPosts = [...newPosts, ...preservedPosts];
+          const finalPosts = mergedPosts.length > 0 ? mergedPosts : existingPosts;
+          const mergedReport = {
             ...prev,
             ...updatedReport,
-            posts: [...newPosts, ...preservedPosts],
+            posts: finalPosts,
           };
+          try {
+            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(mergedReport));
+            localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(finalPosts));
+          } catch (e) {}
+          return mergedReport;
         });
-        try {
-          localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
-        } catch (e) {}
       }
     } catch (err) {
       console.error('Error during social API sync:', err);
@@ -565,6 +592,7 @@ export default function DashboardPage() {
     setReport(updatedReport);
     try {
       localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
+      localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(mergedPosts));
     } catch (e) {}
 
     try {
@@ -700,16 +728,30 @@ export default function DashboardPage() {
                 {/* Charts Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
-                      CONTENT FORMAT
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
+                        CONTENT FORMAT
+                      </h3>
+                      {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
+                        <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200">
+                          All-Time Library
+                        </span>
+                      )}
+                    </div>
                     <FormatBarChart data={formatData} />
                   </div>
 
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading mb-4">
-                      CONTENT DISTRIBUTION
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
+                        CONTENT DISTRIBUTION
+                      </h3>
+                      {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
+                        <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200">
+                          All-Time Library
+                        </span>
+                      )}
+                    </div>
                     <DistributionPieChart data={distributionData} />
                   </div>
                 </div>

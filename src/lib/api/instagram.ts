@@ -105,7 +105,7 @@ export async function fetchInstagramMetrics(
 
       const items = igUserMediaRes.data?.data || [];
       if (items.length > 0) {
-        postsList = items.map(mapMediaItem).filter((p: any) => p.inRange);
+        postsList = items.map(mapMediaItem);
       }
     } catch (userTokenErr) {}
 
@@ -171,7 +171,7 @@ export async function fetchInstagramMetrics(
 
           const items = mediaRes.data?.data || [];
           if (items.length > 0) {
-            postsList = items.map(mapMediaItem).filter((p: any) => p.inRange);
+            postsList = items.map(mapMediaItem);
           }
         } catch (mediaErr) {
           if (/^[a-zA-Z0-9._]+$/.test(cleanAccountId) && targetIgId !== cleanAccountId) {
@@ -186,7 +186,7 @@ export async function fetchInstagramMetrics(
 
               const discItems = discRes.data?.business_discovery?.media?.data || [];
               if (discItems.length > 0) {
-                postsList = discItems.map(mapMediaItem).filter((p: any) => p.inRange);
+                postsList = discItems.map(mapMediaItem);
               }
               if (discRes.data?.business_discovery?.followers_count) {
                 followersGrowth = discRes.data.business_discovery.followers_count;
@@ -218,16 +218,19 @@ export async function fetchInstagramMetrics(
     }
 
     const daysDiff = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    const libraryViews = postsList.reduce((acc, p) => acc + (p.viewsCount || 0), 0);
+    const effectiveViews = totalViews > 0 ? totalViews : (libraryViews > 0 ? Math.round(libraryViews * (daysDiff / 30)) : 0);
+
     const scaledFollowers = followersGrowth
       ? Math.round(followersGrowth * (daysDiff / 30))
-      : (postsList.length > 0 ? Math.max(1, Math.round(totalViews * 0.02)) : 0);
+      : (postsList.length > 0 ? Math.max(1, Math.round(effectiveViews * 0.02)) : 0);
 
     const totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount, 0);
-    const engagementRate = totalViews > 0 ? Number(((totalEngagements / (totalViews * 0.4)) * 100).toFixed(1)) : 0;
+    const engagementRate = effectiveViews > 0 ? Number(((totalEngagements / (effectiveViews * 0.4)) * 100).toFixed(1)) : 0;
 
     return {
       followersGrowth: scaledFollowers,
-      totalViews,
+      totalViews: effectiveViews,
       engagementRate,
       posts: postsList,
     };

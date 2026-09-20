@@ -71,42 +71,40 @@ export async function fetchTikTokMetrics(
 
       const videos = response.data?.data?.videos || [];
       if (videos.length > 0) {
-        postsList = videos
-          .map((v: any, idx: number) => {
-            const views = Number(v.view_count) || 0;
-            const likes = Number(v.like_count) || 0;
-            const comments = Number(v.comment_count) || 0;
-            const shares = Number(v.share_count) || 0;
+        postsList = videos.map((v: any, idx: number) => {
+          const views = Number(v.view_count) || 0;
+          const likes = Number(v.like_count) || 0;
+          const comments = Number(v.comment_count) || 0;
+          const shares = Number(v.share_count) || 0;
 
-            const publishDate = v.create_time ? new Date(v.create_time * 1000).toISOString() : new Date().toISOString();
-            const inRange = isInDateRange(v.create_time || publishDate);
+          const publishDate = v.create_time ? new Date(v.create_time * 1000).toISOString() : new Date().toISOString();
+          const inRange = isInDateRange(v.create_time || publishDate);
 
-            if (inRange) {
-              totalViews += views;
-              totalEngagements += likes + comments + shares;
-            }
+          if (inRange) {
+            totalViews += views;
+            totalEngagements += likes + comments + shares;
+          }
 
-            const rawTitle = v.title || v.video_description || '';
-            const displayTitle = rawTitle
-              ? (rawTitle.length > 75 ? `${rawTitle.substring(0, 75)}...` : rawTitle)
-              : 'TikTok Video';
+          const rawTitle = v.title || v.video_description || '';
+          const displayTitle = rawTitle
+            ? (rawTitle.length > 75 ? `${rawTitle.substring(0, 75)}...` : rawTitle)
+            : 'TikTok Video';
 
-            return {
-              postId: v.id || `tt_live_${idx}`,
-              title: displayTitle,
-              caption: rawTitle,
-              permalink: v.embed_link || '',
-              contentFormat: 'Videos' as const,
-              viewsCount: views,
-              likesCount: likes,
-              commentsCount: comments,
-              sharesCount: shares,
-              thumbnailUrl: v.cover_image_url || null,
-              publishedAt: publishDate,
-              inRange,
-            };
-          })
-          .filter((p: any) => p.inRange);
+          return {
+            postId: v.id || `tt_live_${idx}`,
+            title: displayTitle,
+            caption: rawTitle,
+            permalink: v.embed_link || '',
+            contentFormat: 'Videos' as const,
+            viewsCount: views,
+            likesCount: likes,
+            commentsCount: comments,
+            sharesCount: shares,
+            thumbnailUrl: v.cover_image_url || null,
+            publishedAt: publishDate,
+            inRange,
+          };
+        });
       }
     } catch (listErr) {
       // If video/list/ fails, try research/video/query
