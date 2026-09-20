@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
-import { INITIAL_CLIENTS } from '@/lib/mockData';
+import { getServerClients, saveServerClient, deleteServerClient } from '@/lib/serverStore';
 
 export async function GET() {
   try {
@@ -11,14 +11,32 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!clients || clients.length === 0) {
-      return NextResponse.json([]);
+    if (clients && clients.length > 0) {
+      clients.forEach((c) => {
+        saveServerClient({
+          id: c.id,
+          name: c.name,
+          logoUrl: c.logoUrl || '/logos/default.svg',
+          createdAt: c.createdAt.toISOString(),
+          socialAccounts: (c.socialAccounts || []).map((sa) => ({
+            id: sa.id,
+            clientId: sa.clientId,
+            platform: sa.platform as any,
+            platformAccountId: sa.platformAccountId,
+            accessToken: sa.accessToken,
+            refreshToken: sa.refreshToken || undefined,
+            tokenExpiresAt: sa.tokenExpiresAt?.toISOString(),
+          })),
+        });
+      });
+      return NextResponse.json(serializeData(clients));
     }
 
-    return NextResponse.json(serializeData(clients));
+    const fallbackClients = getServerClients();
+    return NextResponse.json(fallbackClients);
   } catch (error) {
-    console.warn('Prisma DB query failed, returning empty list:', error);
-    return NextResponse.json([]);
+    const fallbackClients = getServerClients();
+    return NextResponse.json(fallbackClients);
   }
 }
 
@@ -31,23 +49,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 });
     }
 
-    const newClient = await prisma.client.create({
-      data: {
-        name: name.trim(),
-        logoUrl: logoUrl || '/logos/default.svg',
-      },
-    });
-
-    return NextResponse.json(serializeData(newClient));
-  } catch (error) {
-    console.warn('DB client creation error (client will persist in local storage):', error);
-    return NextResponse.json({
+    const clientObj = {
       id: `client-${Date.now()}`,
-      name: 'New Client',
-      logoUrl: '/logos/default.svg',
+      name: name.trim(),
+      logoUrl: logoUrl || '/logos/default.svg',
       createdAt: new Date().toISOString(),
       socialAccounts: [],
-    });
+    };
+
+    saveServerClient(clientObj);
+
+    try {
+      const newClient = await prisma.client.create({
+        data: {
+          id: clientObj.id,
+          name: name.trim(),
+          logoUrl: logoUrl || '/logos/default.svg',
+        },
+      });
+
+      return NextResponse.json(serializeData(newClient));
+    } catch (error) {
+      console.warn('DB client creation notice (persisted in server store):', error);
+      return NextResponse.json(clientObj);
+    }
+  } catch (error) {
+    console.error('Error creating client:', error);
+    return NextResponse.json({ error: 'Failed to create client' }, { status: 500 });
   }
 }
 
@@ -64,6 +92,8 @@ export async function DELETE(request: Request) {
     if (!clientId) {
       return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
     }
+
+    deleteServerClient(clientId);
 
     try {
       await prisma.contentPost.deleteMany({ where: { report: { clientId } } });

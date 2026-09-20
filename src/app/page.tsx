@@ -27,8 +27,27 @@ import { Eye, Layers, Sparkles, Plus, AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [selectedClientId, setSelectedClientId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('koko_selected_client_id');
+      if (saved) return saved;
+      const match = document.cookie.match(/koko_selected_client_id=([^;]+)/);
+      if (match) return decodeURIComponent(match[1].trim());
+    }
+    return '';
+  });
   const [report, setReport] = useState<MonthlyReportData>(EMPTY_REPORT);
+
+  // Helper to persist selected client across reloads and routes
+  const handleSelectClient = (clientId: string) => {
+    setSelectedClientId(clientId);
+    if (typeof window !== 'undefined' && clientId) {
+      try {
+        localStorage.setItem('koko_selected_client_id', clientId);
+        document.cookie = `koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch (e) {}
+    }
+  };
 
   // Meta Pages selection state
   const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
@@ -56,14 +75,14 @@ export default function DashboardPage() {
     pageName?: string;
   }>({});
 
-  // 1. Sync URL parameters on initial client mount
+  // 1. Sync URL parameters on initial client mount & listen for OAuth messages
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const params = new URLSearchParams(window.location.search);
       const cid = params.get('clientId');
       if (cid) {
-        setSelectedClientId(cid);
+        handleSelectClient(cid);
       }
       const connected = params.get('connected');
       if (connected === 'instagram') {
@@ -77,23 +96,61 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // 2. Load connected platforms from localStorage for active client
+  // Listen for OAuth completion messages from popup windows
   useEffect(() => {
-    function loadConnectedState() {
+    function handleMessage(event: MessageEvent) {
+      if (!event.data) return;
+      if (event.data.type === 'META_AUTH_SUCCESS' || event.data.type === 'TIKTOK_AUTH_SUCCESS') {
+        const { clientId } = event.data;
+        if (clientId && clientId !== selectedClientId) {
+          handleSelectClient(clientId);
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [selectedClientId]);
+
+  // 2. Load connected platforms from localStorage & serverStore for active client
+  useEffect(() => {
+    async function loadConnectedState() {
       if (!selectedClientId) {
         setConnectedPlatforms({});
         return;
       }
 
       try {
-        const stored = localStorage.getItem('koko_connected_social_accounts');
-        let ig: any = null;
-        let tt: any = null;
-        if (stored) {
-          const accounts: any[] = JSON.parse(stored);
-          ig = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
-          tt = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
+        // Fetch server-persisted accounts from API first
+        let serverAccounts: any[] = [];
+        try {
+          const res = await axios.get(`/api/social-accounts?clientId=${selectedClientId}`);
+          if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+            serverAccounts = res.data;
+          }
+        } catch (e) {
+          // Server offline or network fallback
         }
+
+        const stored = localStorage.getItem('koko_connected_social_accounts');
+        let accounts: any[] = stored ? JSON.parse(stored) : [];
+
+        // Merge server accounts into localStorage accounts
+        if (serverAccounts.length > 0) {
+          serverAccounts.forEach((sa) => {
+            const idx = accounts.findIndex((a) => a.clientId === selectedClientId && a.platform === sa.platform);
+            if (idx >= 0) {
+              accounts[idx] = { ...accounts[idx], ...sa };
+            } else {
+              accounts.push(sa);
+            }
+          });
+          try {
+            localStorage.setItem('koko_connected_social_accounts', JSON.stringify(accounts));
+          } catch (e) {}
+        }
+
+        let ig: any = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+        let tt: any = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
 
         const directIg = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`);
         const directAcct = localStorage.getItem(`koko_active_ig_account_${selectedClientId}`);
@@ -104,6 +161,13 @@ export default function DashboardPage() {
         const directTtToken = localStorage.getItem(`koko_active_tt_token_${selectedClientId}`);
         const directTtAcct = localStorage.getItem(`koko_active_tt_account_${selectedClientId}`);
         const directTtUser = localStorage.getItem(`koko_active_tt_username_${selectedClientId}`);
+
+        // Fallback to 1-year persistent cookies if direct values not found in localStorage
+        const ttCookieMatch = typeof document !== 'undefined' ? document.cookie.match(/koko_session_tt_account=([^;]+)/) : null;
+        const ttCookieAcct = ttCookieMatch ? decodeURIComponent(ttCookieMatch[1].trim()) : null;
+
+        const igCookieMatch = typeof document !== 'undefined' ? document.cookie.match(/koko_session_ig_account=([^;]+)/) : null;
+        const igCookieAcct = igCookieMatch ? decodeURIComponent(igCookieMatch[1].trim()) : null;
 
         setActivePageId(activePage || '');
 
@@ -128,12 +192,16 @@ export default function DashboardPage() {
 
         const ttHandleDisplay = directTtUser
           ? (directTtUser.startsWith('@') ? directTtUser : `@${directTtUser}`)
-          : (tt?.platformAccountId || directTtAcct || undefined);
+          : (tt?.platformAccountId || directTtAcct || ttCookieAcct || undefined);
+
+        const igHandleDisplay = directUser
+          ? (directUser.startsWith('@') ? directUser : `@${directUser}`)
+          : (ig?.platformAccountId || directAcct || igCookieAcct || undefined);
 
         setConnectedPlatforms({
-          instagram: !!ig || !!directIg,
-          tiktok: !!tt || !!directTtToken || !!directTtAcct,
-          instagramHandle: directUser ? `@${directUser}` : (ig?.platformAccountId || directAcct || undefined),
+          instagram: !!ig || !!directIg || !!igCookieAcct,
+          tiktok: !!tt || !!directTtToken || !!directTtAcct || !!ttCookieAcct,
+          instagramHandle: igHandleDisplay,
           tiktokHandle: ttHandleDisplay,
           pageName: activePageName || (ig?.pageName || undefined),
         });
@@ -244,12 +312,23 @@ export default function DashboardPage() {
 
       setClients(base);
 
-      // Select active client ID
+      // Select active client ID with persistence
       setSelectedClientId((prev) => {
         if (prev && base.some((c) => c.id === prev)) {
           return prev;
         }
-        return base[0]?.id || '';
+        const saved = typeof window !== 'undefined' ? localStorage.getItem('koko_selected_client_id') : null;
+        if (saved && base.some((c) => c.id === saved)) {
+          return saved;
+        }
+        const firstId = base[0]?.id || '';
+        if (firstId && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('koko_selected_client_id', firstId);
+            document.cookie = `koko_selected_client_id=${encodeURIComponent(firstId)}; path=/; max-age=31536000; SameSite=Lax`;
+          } catch (e) {}
+        }
+        return firstId;
       });
     }
     fetchClients();
@@ -769,7 +848,7 @@ export default function DashboardPage() {
           <ControlBar
             clients={clients}
             selectedClientId={selectedClientId}
-            onSelectClient={setSelectedClientId}
+            onSelectClient={handleSelectClient}
             startDate={startDate}
             endDate={endDate}
             onDateChange={(start, end) => {

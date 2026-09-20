@@ -99,44 +99,150 @@ export async function GET(request: Request) {
       );
     }
 
-    await prisma.socialAccount.upsert({
-      where: { id: `sa_${clientId}_tiktok` },
-      update: {
-        platformAccountId: ttAccountId,
-        accessToken,
-        refreshToken,
-        tokenExpiresAt: expiresAt,
-      },
-      create: {
+    // Save to server persistent file store
+    try {
+      const { saveServerSocialAccount } = await import('@/lib/serverStore');
+      saveServerSocialAccount({
         id: `sa_${clientId}_tiktok`,
         clientId,
         platform: 'tiktok',
         platformAccountId: ttAccountId,
         accessToken,
         refreshToken,
-        tokenExpiresAt: expiresAt,
-      },
-    });
+        tokenExpiresAt: expiresAt.toISOString(),
+      });
+    } catch (storeErr) {
+      console.warn('Server store save notice:', storeErr);
+    }
+
+    try {
+      await prisma.socialAccount.upsert({
+        where: { id: `sa_${clientId}_tiktok` },
+        update: {
+          platformAccountId: ttAccountId,
+          accessToken,
+          refreshToken,
+          tokenExpiresAt: expiresAt,
+        },
+        create: {
+          id: `sa_${clientId}_tiktok`,
+          clientId,
+          platform: 'tiktok',
+          platformAccountId: ttAccountId,
+          accessToken,
+          refreshToken,
+          tokenExpiresAt: expiresAt,
+        },
+      });
+    } catch (dbErr) {
+      console.warn('Prisma DB write notice (persisted in server store):', dbErr);
+    }
+
+    const returnUrl = `${origin}/settings?connected=tiktok&account=${encodeURIComponent(ttAccountId)}&clientId=${encodeURIComponent(clientId)}`;
+    const dashboardUrl = `${origin}/?connected=tiktok&clientId=${encodeURIComponent(clientId)}`;
 
     return new Response(
-      `<html>
-        <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8f8f6;">
-          <h2 style="color: #111;">TikTok Creator Account Connected!</h2>
-          <p style="color: #666; font-size: 14px;">Connected account ID: ${ttAccountId}</p>
-          <p style="color: #666; font-size: 14px;">Closing window and updating Koko Digital Studio dashboard...</p>
+      `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>TikTok Connected</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
+          <div style="max-width: 460px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 28px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+            <div style="width: 64px; height: 64px; line-height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 32px; margin: 0 auto 18px; border: 1px solid rgba(16, 185, 129, 0.3);">✓</div>
+            <h2 style="font-size: 24px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.02em;">TikTok Connected!</h2>
+            <p style="color: #aaa; font-size: 14px; margin: 0 0 4px;">
+              <span style="color: #10b981; font-weight: 700; font-size: 16px;">${ttAccountId}</span>
+            </p>
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 12px; font-size: 13px; color: #10b981; font-weight: 600; margin: 20px 0 24px;">
+              Persistent Login Session Active (365-day Auto-Refresh)
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <a id="btn-dash" href="${dashboardUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 14px; background: #10b981; color: #000; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 14px; cursor: pointer;">
+                View Analytics Dashboard →
+              </a>
+              <a id="btn-settings" href="${returnUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 12px; background: #222; color: #ddd; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid #333;">
+                Return to Settings
+              </a>
+            </div>
+            <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">4</strong> seconds...</p>
+          </div>
           <script>
-            if (window.opener) {
-              try {
+            // 1. Set persistent cookies (1 year duration)
+            var cookieAge = 31536000;
+            document.cookie = "koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_tt_connected=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_tt_account=${encodeURIComponent(ttAccountId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_active_tt_token_${encodeURIComponent(clientId)}=${encodeURIComponent(accessToken)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+
+            // 2. Save directly to domain localStorage
+            try {
+              if ('${clientId}') {
+                localStorage.setItem('koko_selected_client_id', '${clientId}');
+                localStorage.setItem('koko_active_tt_token_${clientId}', '${accessToken}');
+                localStorage.setItem('koko_active_tt_account_${clientId}', '${ttAccountId}');
+              }
+              var stored = localStorage.getItem('koko_connected_social_accounts');
+              var list = stored ? JSON.parse(stored) : [];
+              var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'tiktok'); });
+              updated.push({
+                id: 'sa_${clientId}_tiktok',
+                clientId: '${clientId}',
+                platform: 'tiktok',
+                platformAccountId: '${ttAccountId}',
+                accessToken: '${accessToken}',
+                tokenExpiresAt: new Date(Date.now() + 365 * 86400 * 1000).toISOString()
+              });
+              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+            } catch (e) {
+              console.warn('LocalStorage save error in callback:', e);
+            }
+
+            // 3. Notify parent window via postMessage
+            try {
+              if (window.opener && !window.opener.closed) {
                 window.opener.postMessage({
                   type: 'TIKTOK_AUTH_SUCCESS',
                   accountId: '${ttAccountId}',
                   accessToken: '${accessToken}',
                   clientId: '${clientId}'
                 }, '*');
-              } catch (e) {}
-              window.opener.location.reload();
-            }
-            setTimeout(function() { window.close(); }, 1200);
+              }
+            } catch (e) {}
+
+            // Direct button listeners
+            document.getElementById('btn-dash').addEventListener('click', function(e) {
+              if (window.opener && !window.opener.closed) {
+                window.opener.location.href = "${dashboardUrl}";
+                window.close();
+              }
+            });
+            document.getElementById('btn-settings').addEventListener('click', function(e) {
+              if (window.opener && !window.opener.closed) {
+                window.opener.location.href = "${returnUrl}";
+                window.close();
+              }
+            });
+
+            // 4. Graceful countdown auto-close
+            var remaining = 4;
+            var timerEl = document.getElementById('timer');
+            var interval = setInterval(function() {
+              remaining--;
+              if (timerEl) timerEl.innerText = remaining;
+              if (remaining <= 0) {
+                clearInterval(interval);
+                if (window.opener && !window.opener.closed) {
+                  window.opener.location.href = "${returnUrl}";
+                  window.close();
+                } else {
+                  window.location.href = "${returnUrl}";
+                }
+              }
+            }, 1000);
           </script>
         </body>
       </html>`,
@@ -145,7 +251,11 @@ export async function GET(request: Request) {
   } catch (err: any) {
     console.error('Error in TikTok OAuth Callback:', err?.response?.data || err?.message || err);
     return new Response(
-      `<html><body><script>alert("Failed to complete TikTok account connection. Check server logs."); window.close();</script></body></html>`,
+      `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
+        <h2>Failed to complete TikTok account connection</h2>
+        <p>${err?.message || 'Check server logs for details.'}</p>
+        <p><a href="/settings">Return to Settings</a></p>
+      </body></html>`,
       { status: 500, headers: { 'Content-Type': 'text/html' } }
     );
   }

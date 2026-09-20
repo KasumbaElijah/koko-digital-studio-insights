@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
+import {
+  getServerSocialAccounts,
+  saveServerSocialAccount,
+  deleteServerSocialAccount,
+} from '@/lib/serverStore';
 
 export async function GET(request: Request) {
   let clientId: string | null = null;
@@ -20,13 +25,28 @@ export async function GET(request: Request) {
     });
 
     if (accounts.length > 0) {
+      // Sync to local server store for offline resilience
+      accounts.forEach((acc) => {
+        saveServerSocialAccount({
+          id: acc.id,
+          clientId: acc.clientId,
+          platform: acc.platform as any,
+          platformAccountId: acc.platformAccountId,
+          accessToken: acc.accessToken,
+          refreshToken: acc.refreshToken || undefined,
+          tokenExpiresAt: acc.tokenExpiresAt?.toISOString(),
+        });
+      });
       return NextResponse.json(serializeData(accounts));
     }
 
-    return NextResponse.json([]);
+    // Check server persistent store
+    const fallbackAccounts = getServerSocialAccounts(clientId || undefined);
+    return NextResponse.json(fallbackAccounts);
   } catch (error) {
-    console.warn('Prisma DB query social accounts error, returning empty list:', error);
-    return NextResponse.json([]);
+    // Prisma offline: load from server file store
+    const fallbackAccounts = getServerSocialAccounts(clientId || undefined);
+    return NextResponse.json(fallbackAccounts);
   }
 }
 
@@ -54,6 +74,23 @@ export async function POST(request: Request) {
       expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
     }
 
+    const accountObj = {
+      id: `sa_${clientId}_${platform}`,
+      clientId,
+      platform,
+      platformAccountId,
+      accessToken: finalAccessToken,
+      refreshToken: refreshToken || null,
+      tokenExpiresAt: expiresAt.toISOString(),
+    };
+
+    // Always persist to server-side file store
+    saveServerSocialAccount({
+      ...accountObj,
+      platform: platform as any,
+      refreshToken: refreshToken || undefined,
+    });
+
     try {
       const socialAccount = await prisma.socialAccount.upsert({
         where: {
@@ -78,16 +115,8 @@ export async function POST(request: Request) {
 
       return NextResponse.json(serializeData(socialAccount));
     } catch (e) {
-      console.warn('Prisma DB write fallback, returning created account mock:', e);
-      return NextResponse.json({
-        id: `sa_${clientId}_${platform}`,
-        clientId,
-        platform,
-        platformAccountId,
-        accessToken: finalAccessToken,
-        refreshToken,
-        tokenExpiresAt: expiresAt.toISOString(),
-      });
+      console.warn('Prisma DB write notice (persisted in server store):', e);
+      return NextResponse.json(accountObj);
     }
   } catch (error) {
     console.error('Error connecting social account:', error);
@@ -108,13 +137,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Social account ID is required' }, { status: 400 });
   }
 
+  // Delete from server file store
+  deleteServerSocialAccount(id);
+
   try {
     await prisma.socialAccount.delete({
       where: { id },
     });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.warn('Prisma DB delete fallback:', error);
-    return NextResponse.json({ success: true, mock: true });
+    return NextResponse.json({ success: true, persisted: true });
   }
 }
+

@@ -89,6 +89,21 @@ export async function GET(request: Request) {
     const accessToken = longLived.accessToken;
     const expiresAt = new Date(Date.now() + longLived.expiresInSeconds * 1000);
 
+    // Save to server persistent file store
+    try {
+      const { saveServerSocialAccount } = await import('@/lib/serverStore');
+      saveServerSocialAccount({
+        id: `sa_${clientId}_instagram`,
+        clientId,
+        platform: 'instagram',
+        platformAccountId: String(igUserId),
+        accessToken,
+        tokenExpiresAt: expiresAt.toISOString(),
+      });
+    } catch (storeErr) {
+      console.warn('Server store save notice:', storeErr);
+    }
+
     // Save to PostgreSQL via Prisma with safe offline fallback
     try {
       await prisma.socialAccount.upsert({
@@ -111,7 +126,7 @@ export async function GET(request: Request) {
       console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
     }
 
-    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igUserId))}&clientId=${encodeURIComponent(clientId)}`;
+    const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igUserId))}&token=${encodeURIComponent(accessToken)}&clientId=${encodeURIComponent(clientId)}`;
 
     return new Response(
       `<!DOCTYPE html>
@@ -135,6 +150,32 @@ export async function GET(request: Request) {
             <p style="color: #555; font-size: 12px; margin-top: 16px;">Redirecting you back automatically...</p>
           </div>
           <script>
+            var cookieAge = 31536000;
+            document.cookie = "koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_connected=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_account=${encodeURIComponent(String(igUserId))}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_active_ig_token_${encodeURIComponent(clientId)}=${encodeURIComponent(accessToken)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+
+            try {
+              if ('${clientId}') {
+                localStorage.setItem('koko_selected_client_id', '${clientId}');
+                localStorage.setItem('koko_active_ig_token_${clientId}', '${accessToken}');
+                localStorage.setItem('koko_active_ig_account_${clientId}', '${igUserId}');
+              }
+              var stored = localStorage.getItem('koko_connected_social_accounts');
+              var list = stored ? JSON.parse(stored) : [];
+              var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
+              updated.push({
+                id: 'sa_${clientId}_instagram',
+                clientId: '${clientId}',
+                platform: 'instagram',
+                platformAccountId: '${igUserId}',
+                accessToken: '${accessToken}',
+                tokenExpiresAt: new Date(Date.now() + 60 * 86400 * 1000).toISOString()
+              });
+              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+            } catch (e) {}
+
             try {
               if (window.opener && !window.opener.closed) {
                 window.opener.location.href = "${returnUrl}";

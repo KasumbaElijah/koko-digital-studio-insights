@@ -50,6 +50,13 @@ export async function POST(request: Request) {
       console.warn('Prisma socialAccount lookup notice (using body tokens):', dbErr);
     }
 
+    if (!socialAccounts || socialAccounts.length === 0) {
+      try {
+        const { getServerSocialAccounts } = await import('@/lib/serverStore');
+        socialAccounts = getServerSocialAccounts(clientId || undefined);
+      } catch {}
+    }
+
     const igAccount = socialAccounts.find((a) => a.platform === 'instagram');
     const ttAccount = socialAccounts.find((a) => a.platform === 'tiktok');
 

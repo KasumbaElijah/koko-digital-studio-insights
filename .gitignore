@@ -12,9 +12,10 @@ install.log
 .env
 .env*.local
 
-# Database
+# Database & Local Store
 /prisma/*.db
 /prisma/*.db-journal
+/.data/
 
 # IDEs & System
 .DS_Store

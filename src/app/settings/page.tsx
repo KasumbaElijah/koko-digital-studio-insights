@@ -24,10 +24,29 @@ import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [selectedClientId, setSelectedClientId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('koko_selected_client_id');
+      if (saved) return saved;
+      const match = document.cookie.match(/koko_selected_client_id=([^;]+)/);
+      if (match) return decodeURIComponent(match[1].trim());
+    }
+    return '';
+  });
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Helper to persist selected client across reloads and routes
+  const handleSelectClient = (clientId: string) => {
+    setSelectedClientId(clientId);
+    if (typeof window !== 'undefined' && clientId) {
+      try {
+        localStorage.setItem('koko_selected_client_id', clientId);
+        document.cookie = `koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=31536000; SameSite=Lax`;
+      } catch (e) {}
+    }
+  };
 
   // Meta Pages selection state
   const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
@@ -151,12 +170,23 @@ export default function SettingsPage() {
 
     setClients(baseClients);
 
-    // Synchronize selected client ID
+    // Synchronize selected client ID with persistence
     setSelectedClientId((prev) => {
       if (prev && baseClients.some((c) => c.id === prev)) {
         return prev;
       }
-      return baseClients[0]?.id || '';
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('koko_selected_client_id') : null;
+      if (saved && baseClients.some((c) => c.id === saved)) {
+        return saved;
+      }
+      const firstId = baseClients[0]?.id || '';
+      if (firstId && typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('koko_selected_client_id', firstId);
+          document.cookie = `koko_selected_client_id=${encodeURIComponent(firstId)}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch (e) {}
+      }
+      return firstId;
     });
   };
 
@@ -631,9 +661,17 @@ export default function SettingsPage() {
       const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'tiktok'));
       updated.push(newAccount);
       localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      localStorage.setItem('koko_selected_client_id', selectedClientId);
       localStorage.setItem(`koko_active_tt_token_${selectedClientId}`, directToken);
       localStorage.setItem(`koko_active_tt_account_${selectedClientId}`, displayHandle);
       localStorage.setItem(`koko_active_tt_username_${selectedClientId}`, cleanUsername);
+
+      // Persistent cookies (1-year duration)
+      const cookieAge = 31536000;
+      document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_tt_connected=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_tt_account=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_active_tt_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
     } catch (e) {
       console.warn('LocalStorage save error on direct TikTok connect:', e);
     }
@@ -690,9 +728,17 @@ export default function SettingsPage() {
       const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
       updated.push(newAccount);
       localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      localStorage.setItem('koko_selected_client_id', selectedClientId);
       localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, directToken);
       localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, displayHandle);
       localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, cleanUsername);
+
+      // Persistent cookies (1-year duration)
+      const cookieAge = 31536000;
+      document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_connected=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_account=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
     } catch (e) {
       console.warn('LocalStorage save error on direct Instagram connect:', e);
     }
@@ -897,7 +943,7 @@ export default function SettingsPage() {
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Client Account:</label>
             <select
               value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
+              onChange={(e) => handleSelectClient(e.target.value)}
               className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black p-2.5 outline-none cursor-pointer"
             >
               {clients.map((c) => (

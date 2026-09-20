@@ -168,6 +168,21 @@ export async function GET(request: Request) {
       }
     }
 
+    // Save to server persistent file store
+    try {
+      const { saveServerSocialAccount } = await import('@/lib/serverStore');
+      saveServerSocialAccount({
+        id: `sa_${clientId}_instagram`,
+        clientId,
+        platform: 'instagram',
+        platformAccountId: igUsername ? `@${igUsername}` : igAccountId,
+        accessToken,
+        tokenExpiresAt: expiresAt.toISOString(),
+      });
+    } catch (storeErr) {
+      console.warn('Server store save notice:', storeErr);
+    }
+
     try {
       await prisma.socialAccount.upsert({
         where: { id: `sa_${clientId}_instagram` },
@@ -237,8 +252,18 @@ export async function GET(request: Request) {
             <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">5</strong> seconds...</p>
           </div>
           <script>
+            // 0. Set persistent cookies (1 year duration)
+            var cookieAge = 31536000;
+            document.cookie = "koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_connected=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_account=${encodeURIComponent(igUsername ? '@' + igUsername : igAccountId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_active_ig_token_${encodeURIComponent(clientId)}=${encodeURIComponent(accessToken)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+
             // 1. Save directly to domain localStorage
             try {
+              if ('${clientId}') {
+                localStorage.setItem('koko_selected_client_id', '${clientId}');
+              }
               var pages = ${discoveredPagesJson};
               localStorage.setItem('koko_meta_available_pages_${clientId}', JSON.stringify(pages));
               if ('${selectedPageId}') {
