@@ -143,7 +143,19 @@ export async function fetchTikTokMetrics(
   if (postsList.length === 0 && cleanUsername) {
     const baseViews = totalViews > 0 ? totalViews : Math.round(312000 * dateScale);
     const baseFollowers = Math.max(1, Math.round(2840 * dateScale));
-    postsList = generateTikTokPortfolio(cleanUsername, startDate, endDate, baseViews);
+    postsList = generateTikTokPortfolio(cleanUsername, startDate, endDate, baseViews).map((p) => ({
+      postId: p.postId,
+      title: p.title,
+      caption: p.caption,
+      permalink: p.permalink || undefined,
+      contentFormat: p.contentFormat,
+      viewsCount: p.viewsCount,
+      likesCount: p.likesCount,
+      commentsCount: p.commentsCount,
+      sharesCount: p.sharesCount,
+      thumbnailUrl: p.thumbnailUrl,
+      publishedAt: p.publishedAt,
+    }));
     totalViews = baseViews;
     totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount + p.sharesCount, 0);
 
