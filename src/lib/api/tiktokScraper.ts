@@ -12,9 +12,107 @@ export interface TikTokProfileScrapeResult {
   posts: ContentPostData[];
 }
 
+interface TikTokVideoDetail {
+  id: string;
+  likes: number;
+  comments: number;
+  shares: number;
+  bookmarks: number;
+  views: number;
+  createTime: string;
+  caption?: string;
+  coverUrl?: string;
+}
+
 /**
- * Fetches real TikTok videos, descriptions, thumbnails, and play counts
- * directly from the creator's public profile embed without requiring third-party keys.
+ * Fetches real TikTok user profile info (followers, likes, bio, avatar)
+ */
+async function fetchTikTokProfileHeader(username: string): Promise<{
+  nickname?: string;
+  avatarUrl?: string;
+  followerCount?: number;
+  heartCount?: number;
+  videoCount?: number;
+} | null> {
+  try {
+    const res = await axios.get(`https://www.tiktok.com/@${username}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      timeout: 7000,
+    });
+    const html = res.data;
+    const match = typeof html === 'string' ? html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/) : null;
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const defaultScope = data['__DEFAULT_SCOPE__'] || {};
+      const userDetail = defaultScope['webapp.user-detail'] || {};
+      const userInfo = userDetail.userInfo || {};
+      const user = userInfo.user || {};
+      const stats = userInfo.stats || {};
+      return {
+        nickname: user.nickname,
+        avatarUrl: user.avatarLarger || user.avatarMedium || user.avatarThumb,
+        followerCount: Number(stats.followerCount) || undefined,
+        heartCount: Number(stats.heartCount ?? stats.heart) || undefined,
+        videoCount: Number(stats.videoCount) || undefined,
+      };
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Fetches exact live likes, comments, shares, views, and timestamp for a specific TikTok video.
+ */
+async function fetchSingleTikTokVideoDetail(username: string, videoId: string): Promise<TikTokVideoDetail | null> {
+  try {
+    const res = await axios.get(`https://www.tiktok.com/@${username}/video/${videoId}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      timeout: 7000,
+    });
+    const html = res.data;
+    const match = typeof html === 'string' ? html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/) : null;
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const defaultScope = data['__DEFAULT_SCOPE__'] || {};
+      const videoDetail = defaultScope['webapp.video-detail'];
+      const itemStruct = videoDetail?.itemInfo?.itemStruct;
+      if (itemStruct) {
+        const stats = itemStruct.stats || {};
+        const createTimeSec = itemStruct.createTime ? Number(itemStruct.createTime) : null;
+        let pubDate = '';
+        if (createTimeSec && !isNaN(createTimeSec)) {
+          pubDate = new Date(createTimeSec * 1000).toISOString();
+        }
+        return {
+          id: videoId,
+          likes: Number(stats.diggCount) || 0,
+          comments: Number(stats.commentCount) || 0,
+          shares: Number(stats.shareCount) || 0,
+          bookmarks: Number(stats.collectCount) || 0,
+          views: Number(stats.playCount) || 0,
+          createTime: pubDate,
+          caption: itemStruct.desc || '',
+          coverUrl: itemStruct.video?.cover || itemStruct.video?.originCover || null,
+        };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Fetches real TikTok videos, descriptions, thumbnails, exact likes, comments, and play counts
+ * directly from the creator's live TikTok profile and video items.
  */
 export async function fetchTikTokProfileVideos(
   username: string
@@ -25,19 +123,34 @@ export async function fetchTikTokProfileVideos(
   }
 
   try {
-    const res = await axios.get(`https://www.tiktok.com/embed/@${cleanUsername}`, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      timeout: 9000,
-    });
+    // 1. Fetch profile header and embed videos concurrently
+    const [profileHeader, embedRes] = await Promise.all([
+      fetchTikTokProfileHeader(cleanUsername),
+      axios
+        .get(`https://www.tiktok.com/embed/@${cleanUsername}`, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          timeout: 9000,
+        })
+        .catch(() => null),
+    ]);
 
-    const html = res.data;
+    const html = embedRes?.data;
     const match = typeof html === 'string' ? html.match(/"videoList":(\[\{.*?\}\])/) : null;
     if (!match) {
-      return { success: false, username: cleanUsername, posts: [] };
+      return {
+        success: false,
+        username: cleanUsername,
+        nickname: profileHeader?.nickname || cleanUsername,
+        avatarUrl: profileHeader?.avatarUrl,
+        followerCount: profileHeader?.followerCount,
+        heartCount: profileHeader?.heartCount,
+        videoCount: profileHeader?.videoCount,
+        posts: [],
+      };
     }
 
     let rawVideos: any[] = [];
@@ -51,58 +164,72 @@ export async function fetchTikTokProfileVideos(
       return { success: false, username: cleanUsername, posts: [] };
     }
 
-    let nickname = cleanUsername;
-    const nickMatch = html.match(/"nickname":"([^"]+)"/);
-    if (nickMatch) nickname = nickMatch[1];
+    let nickname = profileHeader?.nickname || cleanUsername;
+    if (!profileHeader?.nickname && html) {
+      const nickMatch = html.match(/"nickname":"([^"]+)"/);
+      if (nickMatch) nickname = nickMatch[1];
+    }
 
-    // Sort by playCount descending so top performing videos are first
-    const sorted = [...rawVideos].sort((a, b) => (Number(b.playCount) || 0) - (Number(a.playCount) || 0));
+    // 2. Fetch live metrics (exact likes, comments, shares, views, publishedAt) for each video in parallel
+    const detailMap = new Map<string, TikTokVideoDetail>();
+    await Promise.all(
+      rawVideos.map(async (v) => {
+        if (!v.id) return;
+        const detail = await fetchSingleTikTokVideoDetail(cleanUsername, String(v.id));
+        if (detail) {
+          detailMap.set(String(v.id), detail);
+        }
+      })
+    );
 
-    const posts: ContentPostData[] = sorted.map((v: any, idx: number) => {
-      let pubDate = new Date().toISOString();
-      try {
-        if (v.id) {
+    // 3. Map raw videos to ContentPostData with real metrics
+    const posts: ContentPostData[] = rawVideos.map((v: any, idx: number) => {
+      const vidStr = String(v.id || '');
+      const detail = detailMap.get(vidStr);
+
+      // Extract accurate publication timestamp
+      let pubDate = detail?.createTime || '';
+      if (!pubDate && v.id) {
+        try {
           const ts = Number(BigInt(v.id) >> BigInt(32));
           if (ts > 0 && !isNaN(ts)) {
             pubDate = new Date(ts * 1000).toISOString();
           }
-        }
-      } catch {}
+        } catch {}
+      }
+      if (!pubDate) pubDate = new Date().toISOString();
 
-      const views = Number(v.playCount) || 0;
-      const likes = Math.round(views * 0.082);
-      const comments = Math.max(1, Math.round(likes * 0.045));
-      const shares = Math.max(1, Math.round(likes * 0.075));
-      const rawCover = v.coverUrl || v.originCoverUrl || v.dynamicCoverUrl;
+      // Real views, likes, comments, shares
+      const views = detail?.views || Number(v.playCount) || 0;
+      const likes = detail?.likes ?? (Number(v.diggCount) || 0);
+      const comments = detail?.comments ?? (Number(v.commentCount) || 0);
+      const shares = detail?.shares ?? (Number(v.shareCount) || 0);
+
+      const rawCover = detail?.coverUrl || v.coverUrl || v.originCoverUrl || v.dynamicCoverUrl;
       const proxyCover = rawCover ? `/api/image-proxy?url=${encodeURIComponent(rawCover)}` : null;
 
-      // Classify format for variety across format cards
+      // Classify format
+      const rawCaption = detail?.caption || v.desc || '';
       let format: 'Videos' | 'Image' | 'Graphic' | 'Stories' = 'Videos';
-      const descLower = (v.desc || '').toLowerCase();
+      const descLower = rawCaption.toLowerCase();
       if (descLower.includes('#photo') || descLower.includes('#carousel')) {
         format = 'Image';
       } else if (descLower.includes('#graphic') || descLower.includes('#art') || descLower.includes('design')) {
         format = 'Graphic';
       } else if (descLower.includes('#story') || descLower.includes('#qna')) {
         format = 'Stories';
-      } else if (idx === 3) {
-        format = 'Image';
-      } else if (idx === 4) {
-        format = 'Graphic';
-      } else if (idx === 5) {
-        format = 'Stories';
       }
 
-      const displayTitle = v.desc
-        ? (v.desc.length > 70 ? `${v.desc.substring(0, 70)}...` : v.desc)
+      const displayTitle = rawCaption
+        ? (rawCaption.length > 75 ? `${rawCaption.substring(0, 75)}...` : rawCaption)
         : `TikTok Video #${idx + 1}`;
 
       return {
         id: `post_tt_${v.id}`,
-        postId: v.id,
+        postId: String(v.id),
         platform: 'tiktok',
         title: displayTitle,
-        caption: v.desc || '',
+        caption: rawCaption,
         permalink: `https://www.tiktok.com/@${cleanUsername}/video/${v.id}`,
         contentFormat: format,
         viewsCount: views,
@@ -110,17 +237,26 @@ export async function fetchTikTokProfileVideos(
         commentsCount: comments,
         sharesCount: shares,
         thumbnailUrl: proxyCover,
-        isTopPerformer: idx < 3,
+        isTopPerformer: false,
         publishedAt: pubDate,
       };
+    });
+
+    // 4. Sort posts by viewsCount descending so top performing videos are ordered correctly
+    posts.sort((a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0));
+    posts.forEach((p, i) => {
+      p.isTopPerformer = i < 3;
     });
 
     return {
       success: true,
       username: cleanUsername,
       nickname,
+      avatarUrl: profileHeader?.avatarUrl,
+      followerCount: profileHeader?.followerCount,
+      heartCount: profileHeader?.heartCount,
+      videoCount: profileHeader?.videoCount || rawVideos.length,
       posts,
-      videoCount: rawVideos.length,
     };
   } catch (err: any) {
     console.warn('TikTok profile scrape notice:', err?.message || err);

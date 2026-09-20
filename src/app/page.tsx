@@ -147,21 +147,24 @@ export default function DashboardPage() {
               .then((res) => {
                 if (res.data?.success && Array.isArray(res.data?.posts) && res.data.posts.length > 0) {
                   const realTtPosts = res.data.posts;
+                  const realFollowers = res.data.followerCount;
+                  const totalTtViews = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.viewsCount) || 0), 0);
+                  const totalTtEng = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+                  const realTtEngRate = totalTtViews > 0 ? Number(((totalTtEng / totalTtViews) * 100).toFixed(1)) : 0;
+
                   setReport((prev) => {
                     const currentPosts = prev.posts || [];
-                    const nonMockPosts = currentPosts.filter(
-                      (p: any) =>
-                        String(p?.platform || '').toLowerCase() !== 'tiktok' ||
-                        (!p?.thumbnailUrl?.includes('unsplash') &&
-                         !String(p?.id || '').includes('_1') &&
-                         !String(p?.id || '').includes('_2'))
+                    // Keep Instagram and non-TikTok posts, replace all TikTok posts with fresh live data
+                    const nonTtPosts = currentPosts.filter(
+                      (p: any) => String(p?.platform || '').toLowerCase() !== 'tiktok'
                     );
-                    const realIds = new Set(realTtPosts.map((p: any) => p.postId || p.id));
-                    const remainingNonTt = nonMockPosts.filter((p: any) => !realIds.has(p.postId || p.id));
-                    const merged = [...realTtPosts, ...remainingNonTt];
+                    const merged = [...realTtPosts, ...nonTtPosts];
                     const updatedReport = {
                       ...prev,
                       posts: merged,
+                      ...(realFollowers ? { ttFollowersGrowth: realFollowers } : {}),
+                      ...(totalTtViews > 0 ? { ttViews: totalTtViews } : {}),
+                      ...(realTtEngRate > 0 ? { ttEngagementRate: realTtEngRate } : {}),
                     };
                     try {
                       localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
@@ -384,31 +387,29 @@ export default function DashboardPage() {
       allPosts = [...allPosts, ...generatedTtPosts];
     }
 
-    // Filter posts for current period
-    const currentPeriodPosts = allPosts.filter((p) => {
-      if (!p.publishedAt) return true;
+    const isDateWithinRange = (dateInput: string | Date | null | undefined, startDateStr: string, endDateStr: string) => {
+      if (!dateInput) return true;
       try {
-        const pDate = new Date(p.publishedAt);
-        if (isNaN(pDate.getTime())) return true;
-        const pDateStr = pDate.toISOString().split('T')[0];
-        return pDateStr >= sDate && pDateStr <= eDate;
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return true;
+        const utcStr = d.toISOString().split('T')[0];
+        if (utcStr >= startDateStr && utcStr <= endDateStr) return true;
+
+        const localYear = d.getFullYear();
+        const localMonth = String(d.getMonth() + 1).padStart(2, '0');
+        const localDay = String(d.getDate()).padStart(2, '0');
+        const localStr = `${localYear}-${localMonth}-${localDay}`;
+        return localStr >= startDateStr && localStr <= endDateStr;
       } catch {
         return true;
       }
-    });
+    };
+
+    // Filter posts for current period
+    const currentPeriodPosts = allPosts.filter((p) => isDateWithinRange(p.publishedAt, sDate, eDate));
 
     // Filter posts for prior period
-    const priorPeriodPosts = allPosts.filter((p) => {
-      if (!p.publishedAt) return false;
-      try {
-        const pDate = new Date(p.publishedAt);
-        if (isNaN(pDate.getTime())) return false;
-        const pDateStr = pDate.toISOString().split('T')[0];
-        return pDateStr >= priorStartStr && pDateStr <= priorEndStr;
-      } catch {
-        return false;
-      }
-    });
+    const priorPeriodPosts = allPosts.filter((p) => p.publishedAt && isDateWithinRange(p.publishedAt, priorStartStr, priorEndStr));
 
     // 1. Instagram metrics
     const igPosts = currentPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram');

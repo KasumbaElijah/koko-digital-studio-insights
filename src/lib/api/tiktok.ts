@@ -160,14 +160,14 @@ export async function fetchTikTokMetrics(
         }));
 
         const scrapedViews = postsList.reduce((sum, p) => sum + p.viewsCount, 0);
-        totalViews = Math.max(totalViews, scrapedViews, Math.round(312000 * dateScale));
+        totalViews = totalViews > 0 ? totalViews : scrapedViews;
         totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount + p.sharesCount, 0);
-        const baseFollowers = realProfile.followerCount || Math.max(1, Math.round(2840 * dateScale));
+        const baseFollowers = realProfile.followerCount || (totalViews > 0 ? Math.round(totalViews * 0.15) : 0);
 
         return {
           followersGrowth: baseFollowers,
           totalViews,
-          engagementRate: totalViews > 0 ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1)) : 5.8,
+          engagementRate: totalViews > 0 ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1)) : 0,
           posts: postsList,
         };
       }

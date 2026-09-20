@@ -180,17 +180,21 @@ export async function POST(request: Request) {
       : Math.round(167000 * dateScale);
 
     const isTikTokConnected = !!ttPlatformAccountId;
+    const ttPostsSumViews = ttPosts.reduce((acc, p) => acc + (Number(p.viewsCount) || 0), 0);
+    const ttPostsSumEng = ttPosts.reduce((acc, p) => acc + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+    const ttRealEngRate = ttPostsSumViews > 0 ? parseFloat(((ttPostsSumEng / ttPostsSumViews) * 100).toFixed(1)) : 0;
+
     const ttFollowers = ttMetrics?.followersGrowth != null && ttMetrics.followersGrowth > 0
       ? ttMetrics.followersGrowth
-      : (isTikTokConnected ? Math.max(1, Math.round(2840 * dateScale)) : 0);
+      : (isTikTokConnected ? (ttPostsSumViews > 0 ? Math.round(ttPostsSumViews * 0.15) : Math.max(1, Math.round(2840 * dateScale))) : 0);
 
     const ttViews = ttMetrics?.totalViews != null && ttMetrics.totalViews > 0
       ? ttMetrics.totalViews
-      : (isTikTokConnected ? Math.round(312000 * dateScale) : 0);
+      : (ttPostsSumViews > 0 ? ttPostsSumViews : (isTikTokConnected ? Math.round(312000 * dateScale) : 0));
 
     const ttEngagement = ttMetrics?.engagementRate != null && ttMetrics.engagementRate > 0
       ? ttMetrics.engagementRate
-      : (isTikTokConnected ? 5.8 : 0);
+      : (ttRealEngRate > 0 ? ttRealEngRate : (isTikTokConnected ? 5.8 : 0));
 
     const insightsList = [
       `Live Instagram analytics synced for ${igPlatformAccountId}. Video reels are driving 65%+ of aggregate audience views over this ${daysDiff}-day window.`,
