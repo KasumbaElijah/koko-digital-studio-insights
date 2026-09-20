@@ -46,6 +46,7 @@ export interface ContentPostData {
   likesCount: number;
   commentsCount: number;
   sharesCount: number;
+  newFollowers?: number;
   thumbnailUrl?: string | null;
   isTopPerformer: boolean;
   publishedAt: string;

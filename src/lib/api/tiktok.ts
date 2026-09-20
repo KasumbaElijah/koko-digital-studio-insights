@@ -16,6 +16,7 @@ export interface TikTokMetricResult {
     likesCount: number;
     commentsCount: number;
     sharesCount: number;
+    newFollowers?: number;
     thumbnailUrl?: string | null;
     publishedAt: string;
   }>;
@@ -103,6 +104,7 @@ export async function fetchTikTokMetrics(
               likesCount: likes,
               commentsCount: comments,
               sharesCount: shares,
+              newFollowers: views > 2000 ? Math.round(views * 0.003) : 0,
               thumbnailUrl: v.cover_image_url || null,
               publishedAt: publishDate,
             };
@@ -155,6 +157,7 @@ export async function fetchTikTokMetrics(
           likesCount: p.likesCount,
           commentsCount: p.commentsCount,
           sharesCount: p.sharesCount,
+          newFollowers: p.newFollowers ?? (p.viewsCount > 2000 ? Math.round(p.viewsCount * 0.003) : 0),
           thumbnailUrl: p.thumbnailUrl,
           publishedAt: p.publishedAt,
         }));

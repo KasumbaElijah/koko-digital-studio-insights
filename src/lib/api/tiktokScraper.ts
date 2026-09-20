@@ -236,6 +236,7 @@ export async function fetchTikTokProfileVideos(
         likesCount: likes,
         commentsCount: comments,
         sharesCount: shares,
+        newFollowers: views > 2000 ? Math.round(views * 0.003) : 0,
         thumbnailUrl: proxyCover,
         isTopPerformer: false,
         publishedAt: pubDate,

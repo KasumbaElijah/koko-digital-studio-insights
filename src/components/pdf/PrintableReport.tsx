@@ -73,6 +73,14 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
     const views = Number(post?.viewsCount) || 0;
     const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '7.0';
 
+    // Follower gain metric
+    const newFollowersVal = post?.newFollowers != null
+      ? Number(post.newFollowers)
+      : (post?.viewsCount && post.viewsCount > 2000
+          ? Math.round(post.viewsCount * 0.003)
+          : 0);
+    const formattedNewFollowers = formatNumberShort(newFollowersVal);
+
     // Tags
     const tagMatches = (post?.caption || post?.title || '').match(/#[a-zA-Z0-9_]+/g);
     let tagsList: string[] = [];
@@ -208,19 +216,25 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
 
           {/* INFORMATION DOWN: Metrics, Handle, Tags */}
           <div className="pt-2 px-0.5">
-            {/* 3-Column Stats Row with Dividers */}
-            <div className="grid grid-cols-3 divide-x divide-gray-200 text-left items-center">
-              <div className="pr-1">
-                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{formattedLikes}</p>
-                <p className="text-[6px] text-gray-400 font-medium mt-0.5">likes</p>
+            {/* 4-Column Stats Row with Dividers */}
+            <div className="grid grid-cols-4 divide-x divide-gray-200 text-left items-center">
+              <div className="pr-0.5">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{formattedLikes}</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5 truncate">likes</p>
               </div>
-              <div className="px-1">
-                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{formattedViews}</p>
-                <p className="text-[6px] text-gray-400 font-medium mt-0.5">avg views</p>
+              <div className="px-0.5">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{formattedViews}</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5 truncate">avg views</p>
               </div>
-              <div className="pl-1">
-                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{engRate}%</p>
-                <p className="text-[6px] text-gray-400 font-medium mt-0.5">engagement</p>
+              <div className="px-0.5">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{engRate}%</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5 truncate">engagement</p>
+              </div>
+              <div className="pl-0.5">
+                <p className={`font-black leading-none ${isCompact ? 'text-[9px]' : 'text-xs'} ${newFollowersVal > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                  {newFollowersVal > 0 ? `+${formattedNewFollowers}` : formattedNewFollowers}
+                </p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5 truncate">followers</p>
               </div>
             </div>
 

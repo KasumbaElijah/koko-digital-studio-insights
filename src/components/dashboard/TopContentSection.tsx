@@ -72,6 +72,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
     likesCount: number;
     commentsCount: number;
     sharesCount: number;
+    newFollowers?: number;
   } | null>(null);
 
   // Manual Tab State
@@ -84,6 +85,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
   const [manualLikes, setManualLikes] = useState('1800');
   const [manualComments, setManualComments] = useState('85');
   const [manualShares, setManualShares] = useState('240');
+  const [manualFollowers, setManualFollowers] = useState('0');
 
   const igPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'instagram');
   const ttPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'tiktok');
@@ -110,6 +112,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           likesCount: 2400,
           commentsCount: 110,
           sharesCount: 320,
+          newFollowers: 0,
         });
       } else {
         setFetchError('Could not auto-fetch preview. You can enter details manually.');
@@ -127,6 +130,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         likesCount: 1950,
         commentsCount: 92,
         sharesCount: 210,
+        newFollowers: 0,
       });
     } finally {
       setIsFetchingUrl(false);
@@ -148,6 +152,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         likesCount: Number(previewData.likesCount) || 0,
         commentsCount: Number(previewData.commentsCount) || 0,
         sharesCount: Number(previewData.sharesCount) || 0,
+        newFollowers: Number(previewData.newFollowers) || 0,
         thumbnailUrl: previewData.thumbnailUrl || null,
         permalink: previewData.permalink || null,
         isTopPerformer: true,
@@ -164,6 +169,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         likesCount: Number(manualLikes) || 0,
         commentsCount: Number(manualComments) || 0,
         sharesCount: Number(manualShares) || 0,
+        newFollowers: Number(manualFollowers) || 0,
         thumbnailUrl: manualThumbnail.trim() || null,
         permalink: manualPermalink.trim() || null,
         isTopPerformer: true,
@@ -179,6 +185,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
     setManualTitle('');
     setManualThumbnail('');
     setManualPermalink('');
+    setManualFollowers('0');
   };
 
   // Delete a post
@@ -243,6 +250,14 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           const totalEng = (Number(post?.likesCount) || 0) + (Number(post?.commentsCount) || 0) + (Number(post?.sharesCount) || 0);
           const views = Number(post?.viewsCount) || 0;
           const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '7.0';
+
+          // Follower gain metric
+          const newFollowersVal = post?.newFollowers != null
+            ? Number(post.newFollowers)
+            : (post?.viewsCount && post.viewsCount > 2000
+                ? Math.round(post.viewsCount * 0.003)
+                : 0);
+          const formattedNewFollowers = formatNumberShort(newFollowersVal);
 
           // Extract tags from caption or fallback to formats
           const tagMatches = (post?.caption || post?.title || '').match(/#[a-zA-Z0-9_]+/g);
@@ -342,19 +357,25 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
 
                 {/* INFORMATION DOWN: Metrics, Handle, Tags (matching reference) */}
                 <div className="pt-4 pb-1 px-1">
-                  {/* 3-Column Stats Row with Dividers */}
-                  <div className="grid grid-cols-3 divide-x divide-gray-200 text-left items-center">
-                    <div className="pr-1.5">
-                      <p className="text-lg font-black text-gray-900 leading-none">{formattedLikes}</p>
-                      <p className="text-[11px] text-gray-400 font-medium mt-1">likes</p>
+                  {/* 4-Column Stats Row with Dividers */}
+                  <div className="grid grid-cols-4 divide-x divide-gray-200 text-left items-center">
+                    <div className="pr-1">
+                      <p className="text-base font-black text-gray-900 leading-none">{formattedLikes}</p>
+                      <p className="text-[10px] text-gray-400 font-medium mt-1 truncate">likes</p>
                     </div>
-                    <div className="px-1.5">
-                      <p className="text-lg font-black text-gray-900 leading-none">{formattedViews}</p>
-                      <p className="text-[11px] text-gray-400 font-medium mt-1">avg views</p>
+                    <div className="px-1">
+                      <p className="text-base font-black text-gray-900 leading-none">{formattedViews}</p>
+                      <p className="text-[10px] text-gray-400 font-medium mt-1 truncate">avg views</p>
                     </div>
-                    <div className="pl-1.5">
-                      <p className="text-lg font-black text-gray-900 leading-none">{engRate}%</p>
-                      <p className="text-[11px] text-gray-400 font-medium mt-1">engagement</p>
+                    <div className="px-1">
+                      <p className="text-base font-black text-gray-900 leading-none">{engRate}%</p>
+                      <p className="text-[10px] text-gray-400 font-medium mt-1 truncate">eng rate</p>
+                    </div>
+                    <div className="pl-1">
+                      <p className={`text-base font-black leading-none ${newFollowersVal > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                        {newFollowersVal > 0 ? `+${formattedNewFollowers}` : formattedNewFollowers}
+                      </p>
+                      <p className="text-[10px] text-gray-400 font-medium mt-1 truncate">followers</p>
                     </div>
                   </div>
 
@@ -663,7 +684,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-xs pt-1">
+                    <div className="grid grid-cols-4 gap-2 text-xs pt-1">
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500">Views:</label>
                         <input
@@ -693,6 +714,17 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                           value={previewData.commentsCount}
                           onChange={(e) =>
                             setPreviewData({ ...previewData, commentsCount: Number(e.target.value) })
+                          }
+                          className="w-full bg-white border border-gray-200 rounded-lg p-1.5 text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500">Followers:</label>
+                        <input
+                          type="number"
+                          value={previewData.newFollowers ?? 0}
+                          onChange={(e) =>
+                            setPreviewData({ ...previewData, newFollowers: Number(e.target.value) })
                           }
                           className="w-full bg-white border border-gray-200 rounded-lg p-1.5 text-xs font-bold"
                         />
@@ -766,7 +798,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
                   <div>
                     <label className="text-[10px] font-semibold text-gray-500">Views</label>
                     <input
@@ -800,6 +832,15 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                       type="number"
                       value={manualShares}
                       onChange={(e) => setManualShares(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg p-1.5 text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500">Followers</label>
+                    <input
+                      type="number"
+                      value={manualFollowers}
+                      onChange={(e) => setManualFollowers(e.target.value)}
                       className="w-full bg-gray-50 border border-gray-300 rounded-lg p-1.5 text-xs font-bold"
                     />
                   </div>

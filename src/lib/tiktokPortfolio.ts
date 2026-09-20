@@ -117,6 +117,7 @@ export function generateTikTokPortfolio(
       likesCount: pLikes,
       commentsCount: pComments,
       sharesCount: pShares,
+      newFollowers: Math.max(0, Math.round(pViews * 0.0015)),
       thumbnailUrl: defaultThumbnails[bp.thumbIndex] || null,
       isTopPerformer: bp.isTop,
       publishedAt: getPostDate(bp.dayOffset),
