@@ -77,7 +77,16 @@ export interface FormatCount {
   count: number;
 }
 
-export interface DistributionCount {
-  platform: 'Instagram' | 'TikTok';
-  count: number;
+export interface FormatComparisonItem {
+  format: 'Image' | 'Videos' | 'Graphic' | 'Stories';
+  instagram: number;
+  tiktok: number;
+  total: number;
 }
+
+export interface DistributionCount {
+  platform: string;
+  count: number;
+  color?: string;
+}
+

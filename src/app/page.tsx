@@ -5,8 +5,16 @@ import Link from 'next/link';
 import axios from 'axios';
 import { ClientData, MonthlyReportData, MetaPageItem, ContentPostData } from '@/lib/types';
 import { EMPTY_REPORT, createEmptyReport } from '@/lib/mockData';
-import { getFormatDistribution, getPlatformDistribution, calculatePctChange } from '@/lib/analytics';
+import {
+  getFormatDistribution,
+  getFormatDistributionByPlatform,
+  getFormatComparison,
+  getPlatformDistribution,
+  getPlatformFormatDistribution,
+  calculatePctChange,
+} from '@/lib/analytics';
 import { ControlBar } from '@/components/dashboard/ControlBar';
+
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { FormatBarChart } from '@/components/charts/FormatBarChart';
 import { DistributionPieChart } from '@/components/charts/DistributionPieChart';
@@ -37,6 +45,8 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdf-preview'>('dashboard');
+  const [formatTab, setFormatTab] = useState<'comparison' | 'instagram' | 'tiktok'>('comparison');
+  const [distributionTab, setDistributionTab] = useState<'split' | 'instagram' | 'tiktok'>('split');
   const [connectedPlatforms, setConnectedPlatforms] = useState<{
     instagram?: boolean;
     tiktok?: boolean;
@@ -665,7 +675,13 @@ export default function DashboardPage() {
   };
 
   const formatData = getFormatDistribution(safeReport.posts || []);
+  const formatComparisonData = getFormatComparison(safeReport.posts || []);
+  const igFormatData = getFormatDistributionByPlatform(safeReport.posts || [], 'instagram');
+  const ttFormatData = getFormatDistributionByPlatform(safeReport.posts || [], 'tiktok');
+
   const distributionData = getPlatformDistribution(safeReport.posts || []);
+  const igDistributionData = getPlatformFormatDistribution(safeReport.posts || [], 'instagram');
+  const ttDistributionData = getPlatformFormatDistribution(safeReport.posts || [], 'tiktok');
 
   return (
     <ErrorBoundary fallbackTitle="Client Analytics Overview">
@@ -756,34 +772,145 @@ export default function DashboardPage() {
 
                 {/* Charts Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
-                        CONTENT FORMAT
-                      </h3>
-                      {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
-                        <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200">
-                          All-Time Library
-                        </span>
+                  {/* CONTENT FORMAT CARD */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
+                              CONTENT FORMAT
+                            </h3>
+                            {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
+                              <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                All-Time
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            {formatTab === 'comparison'
+                              ? 'Side-by-side Instagram & TikTok format breakdown'
+                              : formatTab === 'instagram'
+                              ? 'Instagram formats (Videos, Images, Graphics, Stories)'
+                              : 'TikTok formats (Videos, Photos, Stories)'}
+                          </p>
+                        </div>
+
+                        {/* Segmented Controls for Platform Selection */}
+                        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl self-start sm:self-auto">
+                          <button
+                            onClick={() => setFormatTab('comparison')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              formatTab === 'comparison'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            Both
+                          </button>
+                          <button
+                            onClick={() => setFormatTab('instagram')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              formatTab === 'instagram'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            Instagram
+                          </button>
+                          <button
+                            onClick={() => setFormatTab('tiktok')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              formatTab === 'tiktok'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            TikTok
+                          </button>
+                        </div>
+                      </div>
+
+                      {formatTab === 'comparison' ? (
+                        <FormatBarChart comparisonData={formatComparisonData} />
+                      ) : formatTab === 'instagram' ? (
+                        <FormatBarChart data={igFormatData} platform="instagram" />
+                      ) : (
+                        <FormatBarChart data={ttFormatData} platform="tiktok" />
                       )}
                     </div>
-                    <FormatBarChart data={formatData} />
                   </div>
 
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
-                        CONTENT DISTRIBUTION
-                      </h3>
-                      {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
-                        <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200">
-                          All-Time Library
-                        </span>
+                  {/* CONTENT DISTRIBUTION CARD */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
+                              CONTENT DISTRIBUTION
+                            </h3>
+                            {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
+                              <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                All-Time
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            {distributionTab === 'split'
+                              ? 'Channel share breakdown (Instagram vs TikTok)'
+                              : distributionTab === 'instagram'
+                              ? 'Instagram format share & percentage breakdown'
+                              : 'TikTok format share & percentage breakdown'}
+                          </p>
+                        </div>
+
+                        {/* Segmented Controls for Distribution Selection */}
+                        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl self-start sm:self-auto">
+                          <button
+                            onClick={() => setDistributionTab('split')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              distributionTab === 'split'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            Channels
+                          </button>
+                          <button
+                            onClick={() => setDistributionTab('instagram')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              distributionTab === 'instagram'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            Instagram
+                          </button>
+                          <button
+                            onClick={() => setDistributionTab('tiktok')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                              distributionTab === 'tiktok'
+                                ? 'bg-white text-gray-900 shadow-xs'
+                                : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                          >
+                            TikTok
+                          </button>
+                        </div>
+                      </div>
+
+                      {distributionTab === 'split' ? (
+                        <DistributionPieChart data={distributionData} centerLabel="Channels" />
+                      ) : distributionTab === 'instagram' ? (
+                        <DistributionPieChart data={igDistributionData} centerLabel="IG Posts" />
+                      ) : (
+                        <DistributionPieChart data={ttDistributionData} centerLabel="TT Posts" />
                       )}
                     </div>
-                    <DistributionPieChart data={distributionData} />
                   </div>
                 </div>
+
 
                 {/* Top Content Previews */}
                 <TopContentSection

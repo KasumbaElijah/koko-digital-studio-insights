@@ -6,11 +6,15 @@ import { DistributionCount } from '@/lib/types';
 
 interface DistributionPieChartProps {
   data: DistributionCount[];
+  centerLabel?: string;
 }
 
-const COLORS = ['#e3e1d5', '#bebbb0'];
+const DEFAULT_COLORS = ['#18181b', '#52525b', '#8f8f99', '#d4d4d8', '#f4f4f5'];
 
-export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({ data }) => {
+export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
+  data,
+  centerLabel = 'Posts',
+}) => {
   const totalCount = data.reduce((sum, item) => sum + (item.count || 0), 0);
 
   if (!data.length || totalCount === 0) {
@@ -30,22 +34,36 @@ export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({ data
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={45}
-            outerRadius={75}
-            paddingAngle={2}
+            innerRadius={48}
+            outerRadius={76}
+            paddingAngle={3}
             dataKey="count"
             nameKey="platform"
-            label={({ platform, count }) => `${platform}\n${count}`}
+            label={({ platform, count }) => `${platform} (${count})`}
           >
             {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
+              />
             ))}
           </Pie>
           <Tooltip
-            contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e0e0e0' }}
+            contentStyle={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '12px' }}
+            formatter={(value: any, name: any) => [
+              `${value} (${Math.round(((Number(value) || 0) / (totalCount || 1)) * 100)}%)`,
+              name,
+            ]}
           />
         </PieChart>
       </ResponsiveContainer>
+
+      {/* Center Donut Stat */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-lg font-black text-gray-900 leading-none">{totalCount}</span>
+        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{centerLabel}</span>
+      </div>
     </div>
   );
 };
+

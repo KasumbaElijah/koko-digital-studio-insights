@@ -2,9 +2,19 @@
 
 import React from 'react';
 import { MonthlyReportData, ClientData } from '@/lib/types';
-import { formatNumberShort, getFormatDistribution, getPlatformDistribution, getTopPerformingPosts } from '@/lib/analytics';
+import {
+  formatNumberShort,
+  getFormatDistribution,
+  getFormatComparison,
+  getFormatDistributionByPlatform,
+  getPlatformDistribution,
+  getPlatformFormatDistribution,
+  getTopPerformingPosts,
+  getTopPerformingPostsByPlatform,
+} from '@/lib/analytics';
 import { FormatBarChart } from '../charts/FormatBarChart';
 import { DistributionPieChart } from '../charts/DistributionPieChart';
+
 
 interface PrintableReportProps {
   report: MonthlyReportData;
@@ -22,8 +32,112 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
   };
 
   const formatData = getFormatDistribution(safeReport.posts || []);
+  const formatComparisonData = getFormatComparison(safeReport.posts || []);
+  const igFormatData = getFormatDistributionByPlatform(safeReport.posts || [], 'instagram');
+  const ttFormatData = getFormatDistributionByPlatform(safeReport.posts || [], 'tiktok');
+
   const distributionData = getPlatformDistribution(safeReport.posts || []);
-  const topPosts = getTopPerformingPosts(safeReport.posts || [], 3);
+  const igDistributionData = getPlatformFormatDistribution(safeReport.posts || [], 'instagram');
+  const ttDistributionData = getPlatformFormatDistribution(safeReport.posts || [], 'tiktok');
+  const hasBothFormats = (igDistributionData || []).length > 0 && (ttDistributionData || []).length > 0;
+
+  const topOverallPosts = getTopPerformingPosts(safeReport.posts || [], 3);
+  const igTopPosts = getTopPerformingPostsByPlatform(safeReport.posts || [], 'instagram', 3);
+  const ttTopPosts = getTopPerformingPostsByPlatform(safeReport.posts || [], 'tiktok', 3);
+  const hasBothTopPlatforms = igTopPosts.length > 0 && ttTopPosts.length > 0;
+
+  const renderPhoneCard = (post: any, idx: number, isCompact = false) => {
+    const isInstagram = String(post?.platform || '').toLowerCase() === 'instagram';
+    const platformLabel = isInstagram ? 'INSTAGRAM' : 'TIKTOK';
+    const videoTitle = `${platformLabel} #${idx + 1}`;
+
+    return (
+      <div key={post?.id || idx} className="flex flex-col items-center">
+        <div className={`mb-1.5 text-center font-bold tracking-wider text-gray-700 uppercase ${isCompact ? 'text-[9px]' : 'text-xs'}`}>
+          {videoTitle}
+        </div>
+
+        <div
+          className={`relative rounded-[28px] overflow-hidden flex flex-col justify-between shadow-xl ${
+            isCompact ? 'w-36 h-56 p-1.5 border-[3px] border-gray-900' : 'w-44 h-72 p-2 border-4 border-gray-800'
+          }`}
+          style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+        >
+          {/* Phone Notch */}
+          <div
+            className={`absolute top-1.5 left-1/2 -translate-x-1/2 rounded-full z-20 ${
+              isCompact ? 'w-12 h-2.5' : 'w-16 h-3'
+            }`}
+            style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          />
+
+          <div
+            className="relative w-full h-full rounded-[20px] overflow-hidden"
+            style={{ backgroundColor: '#111827', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          >
+            {post?.thumbnailUrl ? (
+              <img
+                src={getProxiedUrl(post.thumbnailUrl)}
+                alt={post?.title || 'Video Content'}
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                loading="eager"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : null}
+
+            {/* Content Overlay & Fallback */}
+            <div
+              className={`absolute inset-0 flex flex-col justify-between z-10 ${isCompact ? 'p-2' : 'p-3.5'}`}
+              style={{
+                background: post?.thumbnailUrl
+                  ? 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 40%, rgba(0,0,0,0.75) 100%)'
+                  : !isInstagram
+                  ? 'linear-gradient(135deg, #010101 0%, #161823 50%, #fe2c55 120%)'
+                  : 'linear-gradient(135deg, #405de6 0%, #5851db 30%, #833ab4 60%, #c13584 85%, #e1306c 100%)',
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full text-white tracking-wider"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.6)', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                >
+                  {isInstagram ? 'Instagram' : 'TikTok'}
+                </span>
+                <span className="text-[8px] text-white/90 font-bold drop-shadow-sm">
+                  {post?.contentFormat || 'Video'}
+                </span>
+              </div>
+
+              <div className="mt-auto text-left">
+                <p className={`text-white font-bold line-clamp-2 leading-tight drop-shadow-md ${isCompact ? 'text-[9px]' : 'text-[11px]'}`}>
+                  {post?.caption || post?.title || 'Featured Content Post'}
+                </p>
+                <div className={`mt-1 flex items-center justify-between text-white/90 font-semibold border-t border-white/20 pt-1 ${isCompact ? 'text-[8px]' : 'text-[9px]'}`}>
+                  <span>{formatNumberShort(post?.viewsCount ?? 0)} views</span>
+                  <span>{formatNumberShort(post?.likesCount ?? 0)} likes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 text-center">
+          <p className={`font-bold text-gray-900 leading-tight ${isCompact ? 'text-sm' : 'text-lg'}`}>
+            {formatNumberShort(post?.viewsCount ?? 0)}
+          </p>
+          <p className="text-[9px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
+            {platformLabel} • {post?.contentFormat || 'Videos'}
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   const parseSafeDate = (dateVal?: string | Date | null): Date | null => {
     if (!dateVal) return null;
@@ -254,16 +368,47 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
           <div className="border-t border-b border-dotted border-gray-400 py-6 mb-8">
             <div className="grid grid-cols-2 divide-x divide-dotted divide-gray-400">
               <div className="pr-6">
-                <h3 className="text-sm font-bold tracking-wider text-gray-900 font-heading uppercase mb-4">
-                  CONTENT FORMAT
-                </h3>
-                <FormatBarChart data={formatData} />
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold tracking-wider text-gray-900 font-heading uppercase">
+                    CONTENT FORMAT
+                  </h3>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    Instagram & TikTok
+                  </span>
+                </div>
+                <FormatBarChart comparisonData={formatComparisonData} />
               </div>
               <div className="pl-6">
-                <h3 className="text-sm font-bold tracking-wider text-gray-900 font-heading uppercase mb-4">
-                  CONTENT DISTRIBUTION
-                </h3>
-                <DistributionPieChart data={distributionData} />
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold tracking-wider text-gray-900 font-heading uppercase">
+                    CONTENT DISTRIBUTION
+                  </h3>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    {hasBothFormats ? 'Channels & Formats' : 'Platform Share'}
+                  </span>
+                </div>
+                {hasBothFormats ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                        Instagram
+                      </span>
+                      <div className="w-full h-48">
+                        <DistributionPieChart data={igDistributionData} centerLabel="IG" />
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                        TikTok
+                      </span>
+                      <div className="w-full h-48">
+                        <DistributionPieChart data={ttDistributionData} centerLabel="TT" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <DistributionPieChart data={distributionData} centerLabel="Posts" />
+                )}
               </div>
             </div>
           </div>
@@ -296,101 +441,60 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
       <div className="w-[210mm] min-h-[297mm] p-10 mx-auto bg-white flex flex-col justify-between print:p-8 print:w-full print:h-screen print:page-break-before-always">
         <div>
           {/* Top Title */}
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-gray-900 font-heading text-center mb-10 uppercase">
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-gray-900 font-heading text-center mb-6 uppercase">
             TOP PERFORMING CONTENT {safeClient.name || 'CLIENT'}
           </h2>
 
-          {/* Top 3 Videos Smartphone Grid */}
-          {topPosts.length === 0 ? (
+          {/* Top Performing Content: Separated for Instagram and TikTok */}
+          {hasBothTopPlatforms ? (
+            <div className="space-y-6 mb-8 max-w-3xl mx-auto">
+              {/* INSTAGRAM TOP PERFORMING */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5 px-1 border-b border-gray-100 pb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-black"></span>
+                    <h3 className="text-xs font-black tracking-widest text-gray-900 uppercase font-heading">
+                      INSTAGRAM TOP PERFORMING REELS & POSTS
+                    </h3>
+                  </div>
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">
+                    Highest Views
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-4 max-w-xl mx-auto">
+                  {igTopPosts.map((post, idx) => renderPhoneCard(post, idx, true))}
+                </div>
+              </div>
+
+              {/* TIKTOK TOP PERFORMING */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5 px-1 border-b border-gray-100 pb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-600"></span>
+                    <h3 className="text-xs font-black tracking-widest text-gray-900 uppercase font-heading">
+                      TIKTOK TOP PERFORMING VIDEOS
+                    </h3>
+                  </div>
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">
+                    Highest Views
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-4 max-w-xl mx-auto">
+                  {ttTopPosts.map((post, idx) => renderPhoneCard(post, idx, true))}
+                </div>
+              </div>
+            </div>
+          ) : topOverallPosts.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-10">
+              {topOverallPosts.map((post, idx) => renderPhoneCard(post, idx, false))}
+            </div>
+          ) : (
             <div className="max-w-md mx-auto my-12 p-8 border border-dashed border-gray-300 rounded-3xl text-center">
               <p className="text-sm font-bold text-gray-700">No media posts recorded for this period</p>
               <p className="text-xs text-gray-500 mt-1">Connect social accounts or link real creative posts in the dashboard to showcase top content in this report.</p>
             </div>
-          ) : (
-            <div className={`grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-12`}>
-              {topPosts.map((post, idx) => (
-                <div key={post?.id || idx} className="flex flex-col items-center">
-                  <div className="mb-2 text-xs font-bold tracking-wider text-gray-700 uppercase">
-                    {idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3'}
-                  </div>
-
-                  <div 
-                    className="relative w-44 h-72 rounded-[32px] p-2 border-4 border-gray-800 shadow-xl overflow-hidden flex flex-col justify-between"
-                    style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-                  >
-                    <div 
-                      className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 rounded-full z-20"
-                      style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-                    />
-
-                    <div 
-                      className="relative w-full h-full rounded-[24px] overflow-hidden"
-                      style={{ backgroundColor: '#111827', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-                    >
-                      {post?.thumbnailUrl ? (
-                        <img 
-                          src={getProxiedUrl(post.thumbnailUrl)} 
-                          alt={post?.title || 'Video Content'} 
-                          referrerPolicy="no-referrer"
-                          crossOrigin="anonymous"
-                          loading="eager"
-                          className="w-full h-full object-cover" 
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : null}
-
-                      {/* Content Overlay & Fallback */}
-                      <div 
-                        className="absolute inset-0 flex flex-col justify-between p-3.5 z-10"
-                        style={{
-                          background: post?.thumbnailUrl 
-                            ? 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 40%, rgba(0,0,0,0.75) 100%)'
-                            : post?.platform === 'tiktok'
-                            ? 'linear-gradient(135deg, #010101 0%, #161823 50%, #fe2c55 120%)'
-                            : 'linear-gradient(135deg, #405de6 0%, #5851db 30%, #833ab4 60%, #c13584 85%, #e1306c 100%)',
-                          WebkitPrintColorAdjust: 'exact',
-                          printColorAdjust: 'exact',
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span 
-                            className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full text-white tracking-wider"
-                            style={{ backgroundColor: 'rgba(0,0,0,0.6)', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-                          >
-                            {post?.platform === 'tiktok' ? 'TikTok' : 'Instagram'}
-                          </span>
-                          <span className="text-[9px] text-white/90 font-bold drop-shadow-sm">
-                            {post?.contentFormat || 'Video'}
-                          </span>
-                        </div>
-
-                        <div className="mt-auto text-left">
-                          <p className="text-white text-[11px] font-bold line-clamp-2 leading-tight drop-shadow-md">
-                            {post?.caption || post?.title || 'Featured Content Post'}
-                          </p>
-                          <div className="mt-1.5 flex items-center justify-between text-[9px] text-white/90 font-semibold border-t border-white/20 pt-1">
-                            <span>{formatNumberShort(post?.viewsCount ?? 0)} views</span>
-                            <span>{formatNumberShort(post?.likesCount ?? 0)} likes</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-center">
-                    <p className="text-lg font-bold text-gray-900 leading-tight">
-                      {formatNumberShort(post?.viewsCount ?? 0)}
-                    </p>
-                    <p className="text-[10px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
-                      {post?.platform ? post.platform.toUpperCase() : 'INSTAGRAM'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
+
 
           {/* Strategy Cards: INSIGHTS & NEXT STEPS */}
           <div className="grid grid-cols-2 gap-6 max-w-3xl mx-auto">

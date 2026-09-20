@@ -1,4 +1,4 @@
-import { ContentPostData, FormatCount, DistributionCount } from './types';
+import { ContentPostData, FormatCount, DistributionCount, FormatComparisonItem } from './types';
 
 /**
  * Calculates percentage change between current metric value and prior period.
@@ -33,7 +33,7 @@ export function formatNumberShort(num?: number | bigint | null): string {
 }
 
 /**
- * Generates horizontal bar chart breakdown for content formats
+ * Generates horizontal bar chart breakdown for content formats across all posts
  */
 export function getFormatDistribution(posts?: ContentPostData[] | null): FormatCount[] {
   const counts: Record<string, number> = {
@@ -62,6 +62,85 @@ export function getFormatDistribution(posts?: ContentPostData[] | null): FormatC
 }
 
 /**
+ * Generates horizontal bar chart breakdown for content formats filtered by a specific platform
+ */
+export function getFormatDistributionByPlatform(
+  posts?: ContentPostData[] | null,
+  platform?: 'instagram' | 'tiktok'
+): FormatCount[] {
+  if (!platform) return getFormatDistribution(posts);
+  const target = platform.toLowerCase();
+  const filtered = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === target);
+  return getFormatDistribution(filtered);
+}
+
+/**
+ * Generates paired comparison format breakdown for Instagram and TikTok
+ */
+export function getFormatComparison(posts?: ContentPostData[] | null): FormatComparisonItem[] {
+  const igCounts: Record<string, number> = { Image: 0, Videos: 0, Graphic: 0, Stories: 0 };
+  const ttCounts: Record<string, number> = { Image: 0, Videos: 0, Graphic: 0, Stories: 0 };
+
+  (posts || []).forEach((post) => {
+    if (!post) return;
+    const p = String(post.platform || '').toLowerCase();
+    const format = post.contentFormat || (post as any).format || 'Image';
+    const validFormat = ['Image', 'Videos', 'Graphic', 'Stories'].includes(format) ? format : 'Image';
+
+    if (p === 'instagram') {
+      igCounts[validFormat] = (igCounts[validFormat] || 0) + 1;
+    } else if (p === 'tiktok') {
+      ttCounts[validFormat] = (ttCounts[validFormat] || 0) + 1;
+    }
+  });
+
+  const formats: Array<'Image' | 'Videos' | 'Graphic' | 'Stories'> = ['Videos', 'Image', 'Graphic', 'Stories'];
+  return formats.map((fmt) => ({
+    format: fmt,
+    instagram: igCounts[fmt] || 0,
+    tiktok: ttCounts[fmt] || 0,
+    total: (igCounts[fmt] || 0) + (ttCounts[fmt] || 0),
+  }));
+}
+
+/**
+ * Generates pie / donut chart distribution of content formats within a specific platform
+ */
+export function getPlatformFormatDistribution(
+  posts: ContentPostData[] | null | undefined,
+  platform: 'instagram' | 'tiktok' = 'instagram'
+): DistributionCount[] {
+  const target = (platform || 'instagram').toLowerCase();
+  const filtered = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === target);
+  const formatCounts = getFormatDistribution(filtered);
+
+  // Palettes suited for Instagram vs TikTok
+  const igColors: Record<string, string> = {
+    Videos: '#2b2b2b',
+    Image: '#686660',
+    Graphic: '#a3a096',
+    Stories: '#d8d6ce',
+  };
+
+  const ttColors: Record<string, string> = {
+    Videos: '#1a1a1a',
+    Image: '#525252',
+    Graphic: '#909090',
+    Stories: '#d4d4d4',
+  };
+
+  const colorMap = target === 'instagram' ? igColors : ttColors;
+
+  return formatCounts
+    .filter((f) => f.count > 0)
+    .map((f) => ({
+      platform: f.format,
+      count: f.count,
+      color: colorMap[f.format] || '#bebbb0',
+    }));
+}
+
+/**
  * Generates pie / donut chart distribution split between Instagram and TikTok
  */
 export function getPlatformDistribution(posts?: ContentPostData[] | null): DistributionCount[] {
@@ -76,13 +155,13 @@ export function getPlatformDistribution(posts?: ContentPostData[] | null): Distr
   });
 
   return [
-    { platform: 'Instagram', count: instagram },
-    { platform: 'TikTok', count: tiktok },
+    { platform: 'Instagram', count: instagram, color: '#2b2b2b' },
+    { platform: 'TikTok', count: tiktok, color: '#a3a096' },
   ];
 }
 
 /**
- * Gets top performing 3 posts sorted by view count
+ * Gets top performing posts sorted by view count across all platforms
  */
 export function getTopPerformingPosts(posts?: ContentPostData[] | null, limit = 3): ContentPostData[] {
   if (!posts || !Array.isArray(posts)) return [];
@@ -91,3 +170,19 @@ export function getTopPerformingPosts(posts?: ContentPostData[] | null, limit = 
     .sort((a, b) => (Number(b?.viewsCount) || 0) - (Number(a?.viewsCount) || 0))
     .slice(0, limit);
 }
+
+/**
+ * Gets top performing posts sorted by view count filtered by a specific platform
+ */
+export function getTopPerformingPostsByPlatform(
+  posts: ContentPostData[] | null | undefined,
+  platform: 'instagram' | 'tiktok' = 'instagram',
+  limit = 3
+): ContentPostData[] {
+  if (!posts || !Array.isArray(posts)) return [];
+  const target = (platform || 'instagram').toLowerCase();
+  const filtered = posts.filter((p) => String(p?.platform || '').toLowerCase() === target);
+  return getTopPerformingPosts(filtered, limit);
+}
+
+

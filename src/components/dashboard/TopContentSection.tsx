@@ -37,6 +37,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'link' | 'manual'>('link');
+  const [platformView, setPlatformView] = useState<'split' | 'all' | 'instagram' | 'tiktok'>('split');
 
   // Link Tab State
   const [inputUrl, setInputUrl] = useState('');
@@ -65,7 +66,12 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
   const [manualComments, setManualComments] = useState('85');
   const [manualShares, setManualShares] = useState('240');
 
-  const topPosts = getTopPerformingPosts(posts, 3);
+  const igPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'instagram');
+  const ttPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'tiktok');
+
+  const topOverallPosts = getTopPerformingPosts(posts, 3);
+  const topIgPosts = (getTopPerformingPosts(igPosts, 3) || []);
+  const topTtPosts = (getTopPerformingPosts(ttPosts, 3) || []);
 
   // Fetch preview for TikTok or Instagram URL
   const handleFetchPreview = async () => {
@@ -163,13 +169,145 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
     onUpdatePosts?.(updated);
   };
 
+  const renderPostGrid = (postList: ContentPostData[], platformLabelPrefix?: string) => {
+    if (!postList || postList.length === 0) {
+      return (
+        <div className="w-full py-10 text-gray-500 flex flex-col items-center text-center bg-gray-50/60 rounded-2xl border border-dashed border-gray-200 p-6">
+          <AlertCircle className="w-6 h-6 text-gray-400 mb-2" />
+          <p className="text-sm font-bold text-gray-700">No {platformLabelPrefix || 'Media'} Posts Found</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-sm">
+            Add real post links or sync accounts to display top performing {platformLabelPrefix || 'creative'} content.
+          </p>
+          <button
+            onClick={() => {
+              if (platformLabelPrefix?.toLowerCase().includes('tiktok')) {
+                setManualPlatform('tiktok');
+              } else if (platformLabelPrefix?.toLowerCase().includes('instagram')) {
+                setManualPlatform('instagram');
+              }
+              setShowAddModal(true);
+            }}
+            className="mt-4 px-3.5 py-1.5 bg-black hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add {platformLabelPrefix || 'Post'}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-4xl mx-auto">
+        {postList.map((post, idx) => {
+          const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
+          const platformLabel = String(post?.platform || 'instagram').toUpperCase();
+          const videoTitle = `${platformLabelPrefix ? `${platformLabelPrefix.toUpperCase()} ` : ''}VIDEO #${idx + 1}`;
+          const displayTitle = post.title || post.caption || `${clientName || 'Client'} Feature`;
+
+          return (
+            <div key={post.id || idx} className="flex flex-col items-center group relative">
+              <div className="mb-3 text-sm font-semibold tracking-wider text-gray-600 uppercase flex items-center justify-between w-56 px-1">
+                <span>{videoTitle}</span>
+                {onUpdatePosts && (
+                  <button
+                    onClick={() => handleDeletePost(post.id || post.postId)}
+                    title="Remove post"
+                    className="text-gray-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Smartphone Mockup */}
+              <div className="relative w-56 h-[400px] bg-black rounded-[36px] p-2.5 shadow-2xl border-4 border-gray-800 flex flex-col justify-between overflow-hidden">
+                {/* Phone Notch */}
+                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-full z-20 flex items-center justify-center">
+                  <div className="w-2.5 h-2.5 rounded-full bg-gray-900 border border-gray-800"></div>
+                </div>
+
+                <div className="relative w-full h-full rounded-[28px] overflow-hidden bg-gray-950">
+                  {post.thumbnailUrl ? (
+                    <img
+                      src={post.thumbnailUrl}
+                      alt={displayTitle}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
+                      <Play className="w-10 h-10 mb-2 opacity-50" />
+                      <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
+                    </div>
+                  )}
+
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none"></div>
+
+                  {/* Right Side Stats Column */}
+                  <div className="absolute right-2.5 bottom-12 flex flex-col items-center gap-3.5 z-10 text-white">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
+                        <Heart className="w-4 h-4 text-white fill-white/20" />
+                      </div>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.likesCount ?? 0)}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
+                        <MessageCircle className="w-4 h-4 text-white" />
+                      </div>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.commentsCount ?? 0)}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
+                        <Share2 className="w-4 h-4 text-white" />
+                      </div>
+                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.sharesCount ?? 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* Bottom Caption & External Link */}
+                  <div className="absolute bottom-3 left-3 right-12 z-10 text-white text-left">
+                    <p className="text-xs font-bold leading-snug line-clamp-2 drop-shadow-sm">
+                      {displayTitle}
+                    </p>
+                    {post.permalink && (
+                      <a
+                        href={post.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] text-gray-300 hover:text-white mt-1 underline"
+                      >
+                        View on {platformLabel} <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 text-center">
+                <p className="text-xl font-bold text-gray-900 leading-none">{formattedViews} Views</p>
+                <p className="text-xs font-semibold tracking-widest text-gray-500 uppercase mt-1">
+                  {platformLabel} • {post.contentFormat || 'Videos'}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="w-full bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-6">
       {/* Header with Title and Quick Actions */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-8">
-        <h2 className="text-xl sm:text-2xl font-bold tracking-widest text-gray-900 uppercase font-heading text-center sm:text-left">
-          TOP PERFORMING CONTENT {clientName}
-        </h2>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-widest text-gray-900 uppercase font-heading text-center sm:text-left">
+            TOP PERFORMING CONTENT {clientName}
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5 text-center sm:text-left">
+            Compare top creative content separated by channel or aggregated across your campaigns.
+          </p>
+        </div>
 
         <div className="flex items-center gap-2">
           {onSyncPosts && (
@@ -193,8 +331,61 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         </div>
       </div>
 
+      {/* Platform Navigation Tabs */}
+      <div className="flex items-center justify-between border-b border-gray-200 pb-4 mb-8 flex-wrap gap-3">
+        <div className="inline-flex p-1 bg-gray-100 rounded-xl">
+          <button
+            onClick={() => setPlatformView('split')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              platformView === 'split'
+                ? 'bg-white text-gray-900 shadow-xs'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            Both Platforms (Separated)
+          </button>
+          <button
+            onClick={() => setPlatformView('instagram')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              platformView === 'instagram'
+                ? 'bg-white text-gray-900 shadow-xs'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            Instagram ({igPosts.length})
+          </button>
+          <button
+            onClick={() => setPlatformView('tiktok')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              platformView === 'tiktok'
+                ? 'bg-white text-gray-900 shadow-xs'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            TikTok ({ttPosts.length})
+          </button>
+          <button
+            onClick={() => setPlatformView('all')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              platformView === 'all'
+                ? 'bg-white text-gray-900 shadow-xs'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            All Channels Combined ({posts.length})
+          </button>
+        </div>
+
+        <div className="text-xs text-gray-400 font-medium">
+          {platformView === 'split' && 'Displaying top 3 Instagram & top 3 TikTok posts'}
+          {platformView === 'instagram' && 'Displaying top 3 Instagram posts by views'}
+          {platformView === 'tiktok' && 'Displaying top 3 TikTok posts by views'}
+          {platformView === 'all' && 'Displaying top 3 posts overall by views'}
+        </div>
+      </div>
+
       {/* Content Posts Section */}
-      {topPosts.length === 0 ? (
+      {posts.length === 0 ? (
         <div className="max-w-md mx-auto py-12 text-gray-500 flex flex-col items-center text-center">
           <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
             <AlertCircle className="w-7 h-7 text-gray-400" />
@@ -223,104 +414,48 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
             )}
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-4xl mx-auto">
-          {topPosts.map((post, idx) => {
-            const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
-            const platformLabel = String(post?.platform || 'instagram').toUpperCase();
-            const videoTitle = idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3';
-            const displayTitle = post.title || post.caption || `${clientName || 'Client'} Feature`;
-
-            return (
-              <div key={post.id || idx} className="flex flex-col items-center group relative">
-                <div className="mb-3 text-sm font-semibold tracking-wider text-gray-600 uppercase flex items-center justify-between w-56 px-1">
-                  <span>{videoTitle}</span>
-                  {onUpdatePosts && (
-                    <button
-                      onClick={() => handleDeletePost(post.id || post.postId)}
-                      title="Remove post"
-                      className="text-gray-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Smartphone Mockup */}
-                <div className="relative w-56 h-[400px] bg-black rounded-[36px] p-2.5 shadow-2xl border-4 border-gray-800 flex flex-col justify-between overflow-hidden">
-                  {/* Phone Notch */}
-                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-full z-20 flex items-center justify-center">
-                    <div className="w-2.5 h-2.5 rounded-full bg-gray-900 border border-gray-800"></div>
-                  </div>
-
-                  <div className="relative w-full h-full rounded-[28px] overflow-hidden bg-gray-950">
-                    {post.thumbnailUrl ? (
-                      <img
-                        src={post.thumbnailUrl}
-                        alt={displayTitle}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
-                        <Play className="w-10 h-10 mb-2 opacity-50" />
-                        <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
-                      </div>
-                    )}
-
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none"></div>
-
-                    {/* Right Side Stats Column */}
-                    <div className="absolute right-2.5 bottom-12 flex flex-col items-center gap-3.5 z-10 text-white">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                          <Heart className="w-4 h-4 text-white fill-white/20" />
-                        </div>
-                        <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.likesCount ?? 0)}</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                          <MessageCircle className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.commentsCount ?? 0)}</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                          <Share2 className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.sharesCount ?? 0)}</span>
-                      </div>
-                    </div>
-
-                    {/* Bottom Caption & External Link */}
-                    <div className="absolute bottom-3 left-3 right-12 z-10 text-white text-left">
-                      <p className="text-xs font-bold leading-snug line-clamp-2 drop-shadow-sm">
-                        {displayTitle}
-                      </p>
-                      {post.permalink && (
-                        <a
-                          href={post.permalink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[10px] text-gray-300 hover:text-white mt-1 underline"
-                        >
-                          View on {platformLabel} <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-center">
-                  <p className="text-xl font-bold text-gray-900 leading-none">{formattedViews} Views</p>
-                  <p className="text-xs font-semibold tracking-widest text-gray-500 uppercase mt-1">
-                    {platformLabel} • {post.contentFormat || 'Videos'}
-                  </p>
-                </div>
+      ) : platformView === 'split' ? (
+        <div className="space-y-12">
+          {/* INSTAGRAM SECTION */}
+          <div className="border-b border-gray-100 pb-10">
+            <div className="flex items-center justify-between mb-6 px-1">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-black"></span>
+                <h3 className="text-base font-extrabold tracking-wider text-gray-900 uppercase font-heading">
+                  TOP PERFORMING INSTAGRAM CONTENT
+                </h3>
               </div>
-            );
-          })}
+              <span className="text-xs font-semibold text-gray-500">
+                {igPosts.length} total Instagram posts
+              </span>
+            </div>
+            {renderPostGrid(topIgPosts, 'Instagram')}
+          </div>
+
+          {/* TIKTOK SECTION */}
+          <div>
+            <div className="flex items-center justify-between mb-6 px-1">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-zinc-600"></span>
+                <h3 className="text-base font-extrabold tracking-wider text-gray-900 uppercase font-heading">
+                  TOP PERFORMING TIKTOK CONTENT
+                </h3>
+              </div>
+              <span className="text-xs font-semibold text-gray-500">
+                {ttPosts.length} total TikTok posts
+              </span>
+            </div>
+            {renderPostGrid(topTtPosts, 'TikTok')}
+          </div>
         </div>
+      ) : platformView === 'instagram' ? (
+        <div>{renderPostGrid(topIgPosts, 'Instagram')}</div>
+      ) : platformView === 'tiktok' ? (
+        <div>{renderPostGrid(topTtPosts, 'TikTok')}</div>
+      ) : (
+        <div>{renderPostGrid(topOverallPosts)}</div>
       )}
+
 
       {/* Add Real Post Modal */}
       {showAddModal && (
