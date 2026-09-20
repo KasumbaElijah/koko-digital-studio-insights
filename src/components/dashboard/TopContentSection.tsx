@@ -174,7 +174,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         <div className="flex items-center gap-2">
           {onSyncPosts && (
             <button
-              onClick={onSyncPosts}
+              onClick={() => onSyncPosts()}
               disabled={isSyncing}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition-all cursor-pointer disabled:opacity-50"
             >
@@ -213,7 +213,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
             </button>
             {onSyncPosts && (
               <button
-                onClick={onSyncPosts}
+                onClick={() => onSyncPosts()}
                 disabled={isSyncing}
                 className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
               >

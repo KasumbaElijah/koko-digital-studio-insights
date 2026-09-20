@@ -23,8 +23,8 @@ export async function POST(request: Request) {
       startDateStr = body.startDate || startDateStr;
       endDateStr = body.endDate || endDateStr;
       bodyAccessToken = body.accessToken || '';
-      bodyPlatformAccountId = body.platformAccountId || '';
-      pageId = body.pageId || '';
+      bodyPlatformAccountId = typeof body.platformAccountId === 'string' ? body.platformAccountId : '';
+      pageId = typeof body.pageId === 'string' ? body.pageId : '';
     } catch (e) {
       console.warn('Body parse warning on static export:', e);
     }

@@ -271,13 +271,14 @@ export default function DashboardPage() {
   }, [report, startDate, endDate]);
 
   // Handle dynamic social media API sync
-  const handleLiveSync = async (targetPageOverride?: string) => {
+  const handleLiveSync = async (targetPageOverride?: string | unknown) => {
     if (!selectedClientId) return;
     setIsSyncing(true);
     try {
       let igToken = '';
       let igAccountId = '';
-      let pageId = targetPageOverride || activePageId || '';
+      const cleanPageOverride = typeof targetPageOverride === 'string' ? targetPageOverride : undefined;
+      let pageId = cleanPageOverride || (typeof activePageId === 'string' ? activePageId : '') || '';
       try {
         const stored = localStorage.getItem('koko_connected_social_accounts');
         if (stored) {
@@ -460,7 +461,7 @@ export default function DashboardPage() {
               setStartDate(start);
               setEndDate(end);
             }}
-            onSync={handleLiveSync}
+            onSync={() => handleLiveSync()}
             isSyncing={isSyncing}
             onPrintPdf={handlePrintPdf}
             connectedPlatforms={connectedPlatforms}
@@ -554,7 +555,7 @@ export default function DashboardPage() {
                   clientName={selectedClient.name}
                   posts={safeReport.posts || []}
                   onUpdatePosts={handleUpdatePosts}
-                  onSyncPosts={handleLiveSync}
+                  onSyncPosts={() => handleLiveSync()}
                   isSyncing={isSyncing}
                 />
 
