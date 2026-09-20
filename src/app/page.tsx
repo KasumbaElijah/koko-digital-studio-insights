@@ -137,6 +137,43 @@ export default function DashboardPage() {
           tiktokHandle: ttHandleDisplay,
           pageName: activePageName || (ig?.pageName || undefined),
         });
+
+        // Fetch real TikTok profile posts for the connected handle
+        if (ttHandleDisplay) {
+          const cleanTtUser = ttHandleDisplay.replace(/^@/, '').trim();
+          if (cleanTtUser) {
+            axios
+              .get(`/api/tiktok/posts?username=${cleanTtUser}`)
+              .then((res) => {
+                if (res.data?.success && Array.isArray(res.data?.posts) && res.data.posts.length > 0) {
+                  const realTtPosts = res.data.posts;
+                  setReport((prev) => {
+                    const currentPosts = prev.posts || [];
+                    const nonMockPosts = currentPosts.filter(
+                      (p: any) =>
+                        String(p?.platform || '').toLowerCase() !== 'tiktok' ||
+                        (!p?.thumbnailUrl?.includes('unsplash') &&
+                         !String(p?.id || '').includes('_1') &&
+                         !String(p?.id || '').includes('_2'))
+                    );
+                    const realIds = new Set(realTtPosts.map((p: any) => p.postId || p.id));
+                    const remainingNonTt = nonMockPosts.filter((p: any) => !realIds.has(p.postId || p.id));
+                    const merged = [...realTtPosts, ...remainingNonTt];
+                    const updatedReport = {
+                      ...prev,
+                      posts: merged,
+                    };
+                    try {
+                      localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
+                      localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(merged));
+                    } catch (e) {}
+                    return updatedReport;
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+        }
       } catch (e) {
         console.warn('Error reading connected social accounts:', e);
       }
@@ -323,10 +360,24 @@ export default function DashboardPage() {
       Number(base.ttViews || 0) > 0
     );
 
-    const hasExistingTtPosts = basePosts.some((p) => (p.platform || '').toLowerCase() === 'tiktok');
+    const hasRealTtPosts = basePosts.some(
+      (p) =>
+        (p.platform || '').toLowerCase() === 'tiktok' &&
+        !p.thumbnailUrl?.includes('unsplash') &&
+        !String(p.id || '').includes('_1') &&
+        !String(p.id || '').includes('_2')
+    );
 
     let allPosts = [...basePosts];
-    if (hasTikTokConnected && !hasExistingTtPosts) {
+    if (hasRealTtPosts) {
+      allPosts = allPosts.filter(
+        (p) =>
+          String(p.platform || '').toLowerCase() !== 'tiktok' ||
+          (!p.thumbnailUrl?.includes('unsplash') &&
+           !String(p.id || '').includes('_1') &&
+           !String(p.id || '').includes('_2'))
+      );
+    } else if (hasTikTokConnected && basePosts.filter((p) => p.platform === 'tiktok').length === 0) {
       const handle = connectedPlatforms.tiktokHandle || 'kasumba95';
       const baseTtViews = Number(base.ttViews || 0) > 0 ? Number(base.ttViews) : Math.round(312000 * periodScale);
       const generatedTtPosts = generateTikTokPortfolio(handle, sDate, eDate, baseTtViews);

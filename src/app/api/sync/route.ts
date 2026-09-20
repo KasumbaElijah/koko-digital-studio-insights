@@ -158,7 +158,9 @@ export async function POST(request: Request) {
     const incomingPosts = [...igPosts, ...ttPosts];
     const incomingIds = new Set(incomingPosts.map((p) => p.postId || p.id));
     const preservedOldPosts = existingPostsFromClient.filter(
-      (p) => !incomingIds.has(p.postId || p.id)
+      (p) =>
+        !incomingIds.has(p.postId || p.id) &&
+        !(p.platform === 'tiktok' && (p.thumbnailUrl?.includes('unsplash') || String(p.id).includes('_1') || String(p.id).includes('_2')))
     );
     const posts = incomingPosts.length > 0
       ? [...incomingPosts, ...preservedOldPosts]

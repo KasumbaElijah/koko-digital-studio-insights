@@ -18,12 +18,17 @@ export async function GET(request: Request) {
     }
 
     try {
+      const isTikTok = targetUrl.includes('tiktok') || targetUrl.includes('tiktokcdn');
+      const isInstagram = targetUrl.includes('instagram') || targetUrl.includes('fbcdn') || targetUrl.includes('cdninstagram');
+
       const response = await axios.get(targetUrl, {
         responseType: 'arraybuffer',
-        timeout: 10000,
+        timeout: 12000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          ...(isTikTok ? { Referer: 'https://www.tiktok.com/' } : {}),
+          ...(isInstagram ? { Referer: 'https://www.instagram.com/' } : {}),
         },
       });
 
