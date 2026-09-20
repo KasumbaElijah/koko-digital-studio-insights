@@ -513,7 +513,9 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                     </span>
                   </div>
                 </div>
-                <FormatBarChart comparisonData={formatComparisonData} />
+                <div className="pointer-events-none select-none">
+                  <FormatBarChart comparisonData={formatComparisonData} isPrint={true} />
+                </div>
               </div>
               <div className="pl-6">
                 <div className="flex items-center justify-between mb-3">
@@ -531,8 +533,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                         <span className="w-2 h-2 rounded-full bg-[#e1306c]" style={{ backgroundColor: '#e1306c', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
                         Instagram
                       </span>
-                      <div className="w-full h-48">
-                        <DistributionPieChart data={igDistributionData} centerLabel="IG" />
+                      <div className="w-full h-48 pointer-events-none select-none">
+                        <DistributionPieChart data={igDistributionData} centerLabel="IG" isPrint={true} />
                       </div>
                     </div>
                     <div className="flex flex-col items-center">
@@ -540,13 +542,15 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                         <span className="w-2 h-2 rounded-full bg-black" style={{ backgroundColor: '#010101', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
                         TikTok
                       </span>
-                      <div className="w-full h-48">
-                        <DistributionPieChart data={ttDistributionData} centerLabel="TT" />
+                      <div className="w-full h-48 pointer-events-none select-none">
+                        <DistributionPieChart data={ttDistributionData} centerLabel="TT" isPrint={true} />
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <DistributionPieChart data={distributionData} centerLabel="Posts" />
+                  <div className="pointer-events-none select-none">
+                    <DistributionPieChart data={distributionData} centerLabel="Posts" isPrint={true} />
+                  </div>
                 )}
               </div>
             </div>

@@ -7,6 +7,7 @@ import { DistributionCount } from '@/lib/types';
 interface DistributionPieChartProps {
   data: DistributionCount[];
   centerLabel?: string;
+  isPrint?: boolean;
 }
 
 const DEFAULT_COLORS = ['#e1306c', '#010101', '#25f4ee', '#833ab4', '#fe2c55', '#fcaf45'];
@@ -14,6 +15,7 @@ const DEFAULT_COLORS = ['#e1306c', '#010101', '#25f4ee', '#833ab4', '#fe2c55', '
 export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
   data,
   centerLabel = 'Posts',
+  isPrint = false,
 }) => {
   const totalCount = data.reduce((sum, item) => sum + (item.count || 0), 0);
 
@@ -39,7 +41,9 @@ export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
             paddingAngle={3}
             dataKey="count"
             nameKey="platform"
-            label={({ platform, count }) => `${platform} (${count})`}
+            label={isPrint ? false : ({ platform, count }) => `${platform} (${count})`}
+            labelLine={!isPrint}
+            isAnimationActive={!isPrint}
           >
             {data.map((entry, index) => (
               <Cell
@@ -48,20 +52,22 @@ export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
               />
             ))}
           </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#ffffff',
-              borderRadius: '12px',
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-              fontSize: '12px',
-              fontWeight: 600,
-            }}
-            formatter={(value: any, name: any) => [
-              `${value} (${Math.round(((Number(value) || 0) / (totalCount || 1)) * 100)}%)`,
-              name,
-            ]}
-          />
+          {!isPrint && (
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                fontSize: '12px',
+                fontWeight: 600,
+              }}
+              formatter={(value: any, name: any) => [
+                `${value} (${Math.round(((Number(value) || 0) / (totalCount || 1)) * 100)}%)`,
+                name,
+              ]}
+            />
+          )}
         </PieChart>
       </ResponsiveContainer>
 

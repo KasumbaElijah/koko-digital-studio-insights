@@ -18,6 +18,7 @@ interface FormatBarChartProps {
   data?: FormatCount[];
   comparisonData?: FormatComparisonItem[];
   platform?: 'all' | 'instagram' | 'tiktok';
+  isPrint?: boolean;
 }
 
 const IG_FORMAT_COLORS: Record<string, string> = {
@@ -38,6 +39,7 @@ export const FormatBarChart: React.FC<FormatBarChartProps> = ({
   data,
   comparisonData,
   platform = 'all',
+  isPrint = false,
 }) => {
   const isComparison = !!comparisonData && comparisonData.length > 0;
 
@@ -72,24 +74,26 @@ export const FormatBarChart: React.FC<FormatBarChartProps> = ({
               tickLine={false}
               axisLine={{ stroke: '#e5e5e5' }}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                fontSize: '12px',
-              }}
-              cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
-            />
+            {!isPrint && (
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e7eb',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  fontSize: '12px',
+                }}
+                cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
+              />
+            )}
             <Legend
               verticalAlign="top"
               align="right"
               iconType="circle"
               wrapperStyle={{ fontSize: '11px', fontWeight: 600, paddingBottom: '6px' }}
             />
-            <Bar dataKey="instagram" name="Instagram" fill="#e1306c" radius={[0, 4, 4, 0]} barSize={10} />
-            <Bar dataKey="tiktok" name="TikTok" fill="#010101" radius={[0, 4, 4, 0]} barSize={10} />
+            <Bar dataKey="instagram" name="Instagram" fill="#e1306c" radius={[0, 4, 4, 0]} barSize={10} isAnimationActive={!isPrint} />
+            <Bar dataKey="tiktok" name="TikTok" fill="#010101" radius={[0, 4, 4, 0]} barSize={10} isAnimationActive={!isPrint} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -115,17 +119,19 @@ export const FormatBarChart: React.FC<FormatBarChartProps> = ({
             tickLine={false}
             axisLine={{ stroke: '#e5e5e5' }}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#ffffff',
-              borderRadius: '12px',
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-              fontSize: '12px',
-            }}
-            cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
-          />
-          <Bar dataKey="count" name="Posts" radius={[0, 6, 6, 0]} barSize={20}>
+          {!isPrint && (
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                fontSize: '12px',
+              }}
+              cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
+            />
+          )}
+          <Bar dataKey="count" name="Posts" radius={[0, 6, 6, 0]} barSize={20} isAnimationActive={!isPrint}>
             {(data || []).map((entry, index) => {
               const cellColor =
                 platform === 'instagram'

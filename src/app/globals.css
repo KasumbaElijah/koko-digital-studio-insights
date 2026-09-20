@@ -9,6 +9,19 @@
   }
 }
 
+/* Suppress all interactive chart tooltips, cursors, and active indicators in printable report and exports */
+#printable-report .recharts-tooltip-wrapper,
+#printable-report .recharts-default-tooltip,
+#printable-report .recharts-tooltip-cursor,
+#printable-report .recharts-active-dot,
+#printable-report .recharts-active-bar,
+#printable-report .recharts-cursor {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* Custom print styles for A4 PDF exports */
 @media print {
   * {
@@ -33,8 +46,23 @@
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  .no-print {
+  .no-print,
+  .recharts-tooltip-wrapper,
+  .recharts-default-tooltip,
+  .recharts-tooltip-cursor,
+  .recharts-active-dot,
+  .recharts-active-bar,
+  .recharts-cursor,
+  #printable-report .recharts-tooltip-wrapper,
+  #printable-report .recharts-default-tooltip,
+  #printable-report .recharts-tooltip-cursor,
+  #printable-report .recharts-active-dot,
+  #printable-report .recharts-active-bar,
+  #printable-report .recharts-cursor {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
   @page {
     size: A4 portrait;
