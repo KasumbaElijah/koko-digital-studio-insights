@@ -451,9 +451,16 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                   <h3 className="text-sm font-bold tracking-wider text-gray-900 font-heading uppercase">
                     CONTENT FORMAT
                   </h3>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    Instagram & TikTok
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-extrabold text-[#e1306c] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#e1306c]" style={{ backgroundColor: '#e1306c', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
+                      Instagram
+                    </span>
+                    <span className="text-[9px] font-extrabold text-black flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-black" style={{ backgroundColor: '#010101', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
+                      TikTok
+                    </span>
+                  </div>
                 </div>
                 <FormatBarChart comparisonData={formatComparisonData} />
               </div>
@@ -469,7 +476,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                 {hasBothFormats ? (
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex flex-col items-center">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#e1306c] flex items-center gap-1 mb-1">
+                        <span className="w-2 h-2 rounded-full bg-[#e1306c]" style={{ backgroundColor: '#e1306c', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
                         Instagram
                       </span>
                       <div className="w-full h-48">
@@ -477,7 +485,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                       </div>
                     </div>
                     <div className="flex flex-col items-center">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-black flex items-center gap-1 mb-1">
+                        <span className="w-2 h-2 rounded-full bg-black" style={{ backgroundColor: '#010101', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}></span>
                         TikTok
                       </span>
                       <div className="w-full h-48">

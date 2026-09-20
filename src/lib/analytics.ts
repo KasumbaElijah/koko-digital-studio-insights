@@ -114,19 +114,19 @@ export function getPlatformFormatDistribution(
   const filtered = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === target);
   const formatCounts = getFormatDistribution(filtered);
 
-  // Palettes suited for Instagram vs TikTok
+  // Platform-themed palettes for Instagram vs TikTok
   const igColors: Record<string, string> = {
-    Videos: '#2b2b2b',
-    Image: '#686660',
-    Graphic: '#a3a096',
-    Stories: '#d8d6ce',
+    Videos: '#e1306c', // Instagram Signature Rose / Reels
+    Image: '#833ab4',  // Instagram Royal Purple
+    Graphic: '#fd1d1d',// Instagram Coral Orange
+    Stories: '#fcaf45',// Instagram Sunset Amber
   };
 
   const ttColors: Record<string, string> = {
-    Videos: '#1a1a1a',
-    Image: '#525252',
-    Graphic: '#909090',
-    Stories: '#d4d4d4',
+    Videos: '#fe2c55', // TikTok Neon Red / Videos
+    Image: '#25f4ee',  // TikTok Electric Cyan / Carousels
+    Stories: '#010101',// TikTok Obsidian Black
+    Graphic: '#69c9d0',// TikTok Teal / Muted Cyan
   };
 
   const colorMap = target === 'instagram' ? igColors : ttColors;
@@ -136,7 +136,7 @@ export function getPlatformFormatDistribution(
     .map((f) => ({
       platform: f.format,
       count: f.count,
-      color: colorMap[f.format] || '#bebbb0',
+      color: colorMap[f.format] || '#e1306c',
     }));
 }
 
@@ -155,8 +155,8 @@ export function getPlatformDistribution(posts?: ContentPostData[] | null): Distr
   });
 
   return [
-    { platform: 'Instagram', count: instagram, color: '#2b2b2b' },
-    { platform: 'TikTok', count: tiktok, color: '#a3a096' },
+    { platform: 'Instagram', count: instagram, color: '#e1306c' },
+    { platform: 'TikTok', count: tiktok, color: '#010101' },
   ];
 }
 

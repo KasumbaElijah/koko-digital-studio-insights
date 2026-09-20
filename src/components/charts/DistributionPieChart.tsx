@@ -9,7 +9,7 @@ interface DistributionPieChartProps {
   centerLabel?: string;
 }
 
-const DEFAULT_COLORS = ['#18181b', '#52525b', '#8f8f99', '#d4d4d8', '#f4f4f5'];
+const DEFAULT_COLORS = ['#e1306c', '#010101', '#25f4ee', '#833ab4', '#fe2c55', '#fcaf45'];
 
 export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
   data,
@@ -49,7 +49,14 @@ export const DistributionPieChart: React.FC<DistributionPieChartProps> = ({
             ))}
           </Pie>
           <Tooltip
-            contentStyle={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '12px' }}
+            contentStyle={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}
             formatter={(value: any, name: any) => [
               `${value} (${Math.round(((Number(value) || 0) / (totalCount || 1)) * 100)}%)`,
               name,

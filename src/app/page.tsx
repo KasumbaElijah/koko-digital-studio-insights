@@ -850,14 +850,36 @@ export default function DashboardPage() {
                 {/* Charts Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* CONTENT FORMAT CARD */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                  <div className={`bg-white border rounded-2xl p-6 shadow-sm flex flex-col justify-between transition-colors ${
+                    formatTab === 'instagram'
+                      ? 'border-pink-200/80 shadow-pink-500/5'
+                      : formatTab === 'tiktok'
+                      ? 'border-zinc-300 shadow-zinc-900/5'
+                      : 'border-gray-200'
+                  }`}>
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                         <div>
                           <div className="flex items-center gap-2">
+                            <span className={`w-2.5 h-2.5 rounded-full ${
+                              formatTab === 'instagram'
+                                ? 'bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600'
+                                : formatTab === 'tiktok'
+                                ? 'bg-[#010101]'
+                                : 'bg-gray-800'
+                            }`} />
                             <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
                               CONTENT FORMAT
                             </h3>
+                            {formatTab === 'instagram' ? (
+                              <span className="text-[10px] text-[#e1306c] font-black bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
+                                INSTAGRAM
+                              </span>
+                            ) : formatTab === 'tiktok' ? (
+                              <span className="text-[10px] text-zinc-900 font-black bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-300">
+                                TIKTOK
+                              </span>
+                            ) : null}
                             {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
                               <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
                                 All-Time
@@ -887,22 +909,24 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={() => setFormatTab('instagram')}
-                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               formatTab === 'instagram'
-                                ? 'bg-white text-gray-900 shadow-xs'
-                                : 'text-gray-500 hover:text-gray-800'
+                                ? 'bg-[#e1306c] text-white shadow-xs'
+                                : 'text-gray-500 hover:text-[#e1306c]'
                             }`}
                           >
+                            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                             Instagram
                           </button>
                           <button
                             onClick={() => setFormatTab('tiktok')}
-                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               formatTab === 'tiktok'
-                                ? 'bg-white text-gray-900 shadow-xs'
-                                : 'text-gray-500 hover:text-gray-800'
+                                ? 'bg-black text-white shadow-xs'
+                                : 'text-gray-500 hover:text-black'
                             }`}
                           >
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#fe2c55]" />
                             TikTok
                           </button>
                         </div>
@@ -919,14 +943,36 @@ export default function DashboardPage() {
                   </div>
 
                   {/* CONTENT DISTRIBUTION CARD */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                  <div className={`bg-white border rounded-2xl p-6 shadow-sm flex flex-col justify-between transition-colors ${
+                    distributionTab === 'instagram'
+                      ? 'border-pink-200/80 shadow-pink-500/5'
+                      : distributionTab === 'tiktok'
+                      ? 'border-zinc-300 shadow-zinc-900/5'
+                      : 'border-gray-200'
+                  }`}>
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                         <div>
                           <div className="flex items-center gap-2">
+                            <span className={`w-2.5 h-2.5 rounded-full ${
+                              distributionTab === 'instagram'
+                                ? 'bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600'
+                                : distributionTab === 'tiktok'
+                                ? 'bg-[#010101]'
+                                : 'bg-gray-800'
+                            }`} />
                             <h3 className="text-sm font-bold tracking-wider text-gray-900 uppercase font-heading">
                               CONTENT DISTRIBUTION
                             </h3>
+                            {distributionTab === 'instagram' ? (
+                              <span className="text-[10px] text-[#e1306c] font-black bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
+                                INSTAGRAM
+                              </span>
+                            ) : distributionTab === 'tiktok' ? (
+                              <span className="text-[10px] text-zinc-900 font-black bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-300">
+                                TIKTOK
+                              </span>
+                            ) : null}
                             {!safeReport.hasPeriodPosts && (safeReport.posts || []).length > 0 && (
                               <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
                                 All-Time
@@ -956,22 +1002,24 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={() => setDistributionTab('instagram')}
-                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               distributionTab === 'instagram'
-                                ? 'bg-white text-gray-900 shadow-xs'
-                                : 'text-gray-500 hover:text-gray-800'
+                                ? 'bg-[#e1306c] text-white shadow-xs'
+                                : 'text-gray-500 hover:text-[#e1306c]'
                             }`}
                           >
+                            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                             Instagram
                           </button>
                           <button
                             onClick={() => setDistributionTab('tiktok')}
-                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               distributionTab === 'tiktok'
-                                ? 'bg-white text-gray-900 shadow-xs'
-                                : 'text-gray-500 hover:text-gray-800'
+                                ? 'bg-black text-white shadow-xs'
+                                : 'text-gray-500 hover:text-black'
                             }`}
                           >
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#fe2c55]" />
                             TikTok
                           </button>
                         </div>
