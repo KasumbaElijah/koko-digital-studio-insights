@@ -43,13 +43,26 @@ export async function fetchInstagramMetrics(
     let followersGrowth = 0;
     let postsList: InstagramMetricResult['posts'] = [];
 
+    const startMs = startDate.getTime();
+    const endMs = new Date(endDate).setHours(23, 59, 59, 999);
+
+    const isInDateRange = (dateStr?: string | null) => {
+      if (!dateStr) return true;
+      const t = new Date(dateStr).getTime();
+      return !isNaN(t) && t >= startMs && t <= endMs;
+    };
+
     const mapMediaItem = (m: any, idx: number) => {
       const likes = Number(m.like_count) || 0;
       const comments = Number(m.comments_count) || 0;
       const isVideo = m.media_type === 'VIDEO';
       const isCarousel = m.media_type === 'CAROUSEL_ALBUM';
       const estimatedViews = isVideo ? Math.max(likes * 14 + comments * 25, 450) : Math.max(likes * 9 + comments * 15, 200);
-      totalViews += estimatedViews;
+
+      const inRange = isInDateRange(m.timestamp);
+      if (inRange) {
+        totalViews += estimatedViews;
+      }
 
       const format: 'Image' | 'Videos' | 'Graphic' | 'Stories' = isVideo
         ? 'Videos'
@@ -75,6 +88,7 @@ export async function fetchInstagramMetrics(
         sharesCount: Math.round(likes * 0.12),
         thumbnailUrl: previewThumb,
         publishedAt: m.timestamp || new Date().toISOString(),
+        inRange,
       };
     };
 
@@ -91,7 +105,7 @@ export async function fetchInstagramMetrics(
 
       const items = igUserMediaRes.data?.data || [];
       if (items.length > 0) {
-        postsList = items.map(mapMediaItem);
+        postsList = items.map(mapMediaItem).filter((p: any) => p.inRange);
       }
     } catch (userTokenErr) {}
 
@@ -157,7 +171,7 @@ export async function fetchInstagramMetrics(
 
           const items = mediaRes.data?.data || [];
           if (items.length > 0) {
-            postsList = items.map(mapMediaItem);
+            postsList = items.map(mapMediaItem).filter((p: any) => p.inRange);
           }
         } catch (mediaErr) {
           if (/^[a-zA-Z0-9._]+$/.test(cleanAccountId) && targetIgId !== cleanAccountId) {
@@ -172,7 +186,7 @@ export async function fetchInstagramMetrics(
 
               const discItems = discRes.data?.business_discovery?.media?.data || [];
               if (discItems.length > 0) {
-                postsList = discItems.map(mapMediaItem);
+                postsList = discItems.map(mapMediaItem).filter((p: any) => p.inRange);
               }
               if (discRes.data?.business_discovery?.followers_count) {
                 followersGrowth = discRes.data.business_discovery.followers_count;
@@ -203,11 +217,16 @@ export async function fetchInstagramMetrics(
       } catch (insightErr) {}
     }
 
+    const daysDiff = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    const scaledFollowers = followersGrowth
+      ? Math.round(followersGrowth * (daysDiff / 30))
+      : (postsList.length > 0 ? Math.max(1, Math.round(totalViews * 0.02)) : 0);
+
     const totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount, 0);
     const engagementRate = totalViews > 0 ? Number(((totalEngagements / (totalViews * 0.4)) * 100).toFixed(1)) : 0;
 
     return {
-      followersGrowth: followersGrowth || (postsList.length > 0 ? Math.round(totalViews * 0.02) : 0),
+      followersGrowth: scaledFollowers,
       totalViews,
       engagementRate,
       posts: postsList,

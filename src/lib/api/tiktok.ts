@@ -41,6 +41,15 @@ export async function fetchTikTokMetrics(
     let totalViews = 0;
     let totalEngagements = 0;
 
+    const startMs = startDate.getTime();
+    const endMs = new Date(endDate).setHours(23, 59, 59, 999);
+
+    const isInDateRange = (timestamp?: number | string | null) => {
+      if (!timestamp) return true;
+      const t = typeof timestamp === 'number' ? timestamp * 1000 : new Date(timestamp).getTime();
+      return !isNaN(t) && t >= startMs && t <= endMs;
+    };
+
     // 1. Query TikTok Display API v2 video list
     try {
       const response = await axios.post(
@@ -54,7 +63,7 @@ export async function fetchTikTokMetrics(
             'Content-Type': 'application/json',
           },
           params: {
-            fields: 'id,title,video_description,duration,cover_image_url,embed_html,embed_link,like_count,comment_count,share_count,view_count',
+            fields: 'id,title,video_description,duration,cover_image_url,embed_html,embed_link,like_count,comment_count,share_count,view_count,create_time',
           },
           timeout: 10000,
         }
@@ -62,34 +71,42 @@ export async function fetchTikTokMetrics(
 
       const videos = response.data?.data?.videos || [];
       if (videos.length > 0) {
-        postsList = videos.map((v: any, idx: number) => {
-          const views = Number(v.view_count) || 0;
-          const likes = Number(v.like_count) || 0;
-          const comments = Number(v.comment_count) || 0;
-          const shares = Number(v.share_count) || 0;
+        postsList = videos
+          .map((v: any, idx: number) => {
+            const views = Number(v.view_count) || 0;
+            const likes = Number(v.like_count) || 0;
+            const comments = Number(v.comment_count) || 0;
+            const shares = Number(v.share_count) || 0;
 
-          totalViews += views;
-          totalEngagements += likes + comments + shares;
+            const publishDate = v.create_time ? new Date(v.create_time * 1000).toISOString() : new Date().toISOString();
+            const inRange = isInDateRange(v.create_time || publishDate);
 
-          const rawTitle = v.title || v.video_description || '';
-          const displayTitle = rawTitle
-            ? (rawTitle.length > 75 ? `${rawTitle.substring(0, 75)}...` : rawTitle)
-            : 'TikTok Video';
+            if (inRange) {
+              totalViews += views;
+              totalEngagements += likes + comments + shares;
+            }
 
-          return {
-            postId: v.id || `tt_live_${idx}`,
-            title: displayTitle,
-            caption: rawTitle,
-            permalink: v.embed_link || '',
-            contentFormat: 'Videos' as const,
-            viewsCount: views,
-            likesCount: likes,
-            commentsCount: comments,
-            sharesCount: shares,
-            thumbnailUrl: v.cover_image_url || null,
-            publishedAt: new Date().toISOString(),
-          };
-        });
+            const rawTitle = v.title || v.video_description || '';
+            const displayTitle = rawTitle
+              ? (rawTitle.length > 75 ? `${rawTitle.substring(0, 75)}...` : rawTitle)
+              : 'TikTok Video';
+
+            return {
+              postId: v.id || `tt_live_${idx}`,
+              title: displayTitle,
+              caption: rawTitle,
+              permalink: v.embed_link || '',
+              contentFormat: 'Videos' as const,
+              viewsCount: views,
+              likesCount: likes,
+              commentsCount: comments,
+              sharesCount: shares,
+              thumbnailUrl: v.cover_image_url || null,
+              publishedAt: publishDate,
+              inRange,
+            };
+          })
+          .filter((p: any) => p.inRange);
       }
     } catch (listErr) {
       // If video/list/ fails, try research/video/query

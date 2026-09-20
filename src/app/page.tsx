@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
-import { ClientData, MonthlyReportData, MetaPageItem } from '@/lib/types';
+import { ClientData, MonthlyReportData, MetaPageItem, ContentPostData } from '@/lib/types';
 import { EMPTY_REPORT } from '@/lib/mockData';
-import { getFormatDistribution, getPlatformDistribution } from '@/lib/analytics';
+import { getFormatDistribution, getPlatformDistribution, calculatePctChange } from '@/lib/analytics';
 import { ControlBar } from '@/components/dashboard/ControlBar';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { FormatBarChart } from '@/components/charts/FormatBarChart';
@@ -263,10 +263,125 @@ export default function DashboardPage() {
 
   const safeReport = useMemo(() => {
     const base = report || EMPTY_REPORT;
+    const sDate = startDate || base.startDate;
+    const eDate = endDate || base.endDate;
+
+    const startObj = new Date(sDate);
+    const endObj = new Date(eDate);
+    const daysDiff = Math.max(1, Math.round((endObj.getTime() - startObj.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    const periodScale = daysDiff / 30;
+
+    // Prior period dates for comparative change calculation
+    const priorEndObj = new Date(startObj);
+    priorEndObj.setDate(priorEndObj.getDate() - 1);
+    const priorStartObj = new Date(priorEndObj);
+    priorStartObj.setDate(priorStartObj.getDate() - daysDiff + 1);
+    const priorStartStr = priorStartObj.toISOString().split('T')[0];
+    const priorEndStr = priorEndObj.toISOString().split('T')[0];
+
+    const allPosts: ContentPostData[] = Array.isArray(base.posts) ? base.posts : [];
+
+    // Filter posts for current period
+    const currentPeriodPosts = allPosts.filter((p) => {
+      if (!p.publishedAt) return true;
+      try {
+        const pDate = new Date(p.publishedAt);
+        if (isNaN(pDate.getTime())) return true;
+        const pDateStr = pDate.toISOString().split('T')[0];
+        return pDateStr >= sDate && pDateStr <= eDate;
+      } catch {
+        return true;
+      }
+    });
+
+    // Filter posts for prior period
+    const priorPeriodPosts = allPosts.filter((p) => {
+      if (!p.publishedAt) return false;
+      try {
+        const pDate = new Date(p.publishedAt);
+        if (isNaN(pDate.getTime())) return false;
+        const pDateStr = pDate.toISOString().split('T')[0];
+        return pDateStr >= priorStartStr && pDateStr <= priorEndStr;
+      } catch {
+        return false;
+      }
+    });
+
+    // 1. Instagram metrics
+    const igPosts = currentPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram');
+    const igPriorPosts = priorPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram');
+
+    const igPostsViews = igPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
+    const igPriorPostsViews = igPriorPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
+
+    let computedIgViews = Number(base.igViews || 0);
+    if (igPostsViews > 0) {
+      computedIgViews = igPostsViews;
+    } else if (computedIgViews > 0) {
+      computedIgViews = Math.round(computedIgViews * periodScale);
+    }
+
+    let computedIgFollowers = Number(base.igFollowersGrowth || 0);
+    if (computedIgFollowers > 0) {
+      computedIgFollowers = Math.max(1, Math.round(computedIgFollowers * periodScale));
+    }
+
+    let computedIgEngagementRate = base.igEngagementRate || 0;
+    if (igPosts.length > 0) {
+      const igEngagements = igPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+      const denominator = computedIgViews > 0 ? computedIgViews : (igPostsViews || 1);
+      computedIgEngagementRate = Number(((igEngagements / denominator) * 100).toFixed(1));
+    }
+
+    let computedIgPctChange = base.igViewsPctChange || 0;
+    if (igPriorPostsViews > 0 && igPostsViews > 0) {
+      computedIgPctChange = calculatePctChange(igPostsViews, igPriorPostsViews);
+    }
+
+    // 2. TikTok metrics
+    const ttPosts = currentPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok');
+    const ttPriorPosts = priorPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok');
+
+    const ttPostsViews = ttPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
+    const ttPriorPostsViews = ttPriorPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
+
+    let computedTtViews = Number(base.ttViews || 0);
+    if (ttPostsViews > 0) {
+      computedTtViews = ttPostsViews;
+    } else if (computedTtViews > 0) {
+      computedTtViews = Math.round(computedTtViews * periodScale);
+    }
+
+    let computedTtFollowers = Number(base.ttFollowersGrowth || 0);
+    if (computedTtFollowers > 0) {
+      computedTtFollowers = Math.max(1, Math.round(computedTtFollowers * periodScale));
+    }
+
+    let computedTtEngagementRate = base.ttEngagementRate || 0;
+    if (ttPosts.length > 0) {
+      const ttEngagements = ttPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+      const denominator = computedTtViews > 0 ? computedTtViews : (ttPostsViews || 1);
+      computedTtEngagementRate = Number(((ttEngagements / denominator) * 100).toFixed(1));
+    }
+
+    let computedTtPctChange = base.ttViewsPctChange || 0;
+    if (ttPriorPostsViews > 0 && ttPostsViews > 0) {
+      computedTtPctChange = calculatePctChange(ttPostsViews, ttPriorPostsViews);
+    }
+
     return {
       ...base,
-      startDate: startDate || base.startDate,
-      endDate: endDate || base.endDate,
+      startDate: sDate,
+      endDate: eDate,
+      posts: currentPeriodPosts,
+      igViews: computedIgViews,
+      igFollowersGrowth: computedIgFollowers,
+      igEngagementRate: computedIgEngagementRate,
+      igViewsPctChange: computedIgPctChange,
+      ttViews: computedTtViews,
+      ttFollowersGrowth: computedTtFollowers,
+      ttEngagementRate: computedTtEngagementRate,
+      ttViewsPctChange: computedTtPctChange,
     };
   }, [report, startDate, endDate]);
 
@@ -313,7 +428,17 @@ export default function DashboardPage() {
 
       const updatedReport = res.data?.report || (res.data?.id ? res.data : null);
       if (updatedReport) {
-        setReport(updatedReport);
+        setReport((prev) => {
+          const existingPosts = prev.posts || [];
+          const newPosts = updatedReport.posts || [];
+          const newPostIds = new Set(newPosts.map((p: any) => p.postId || p.id));
+          const preservedPosts = existingPosts.filter((p: any) => !newPostIds.has(p.postId || p.id));
+          return {
+            ...prev,
+            ...updatedReport,
+            posts: [...newPosts, ...preservedPosts],
+          };
+        });
         try {
           localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
         } catch (e) {}
@@ -384,12 +509,15 @@ export default function DashboardPage() {
     handleLiveSync(page.id);
   };
 
-  // Auto-sync live metrics if Instagram is connected and report is empty
+  // Auto-sync live metrics whenever connected platforms, active client, or date range changes
   useEffect(() => {
-    if (connectedPlatforms.instagram && selectedClientId && (Number(safeReport.igViews) === 0 || safeReport.id === 'report-empty-state')) {
-      handleLiveSync();
+    if ((connectedPlatforms.instagram || connectedPlatforms.tiktok) && selectedClientId) {
+      const timer = setTimeout(() => {
+        handleLiveSync();
+      }, 700);
+      return () => clearTimeout(timer);
     }
-  }, [connectedPlatforms.instagram, selectedClientId]);
+  }, [selectedClientId, startDate, endDate, connectedPlatforms.instagram, connectedPlatforms.tiktok]);
 
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {
@@ -416,11 +544,23 @@ export default function DashboardPage() {
     }
   };
 
-  // Update real posts list (persists to localStorage and DB)
-  const handleUpdatePosts = async (updatedPosts: any[]) => {
+  // Update real posts list (persists to localStorage and DB, preserving posts in other date ranges)
+  const handleUpdatePosts = async (updatedCurrentRangePosts: any[]) => {
+    // Preserve any posts that belonged to other date ranges
+    const otherRangePosts = (report.posts || []).filter((p) => {
+      if (!p.publishedAt) return false;
+      const pDate = new Date(p.publishedAt);
+      if (isNaN(pDate.getTime())) return false;
+      const pDateStr = pDate.toISOString().split('T')[0];
+      return pDateStr < startDate || pDateStr > endDate;
+    });
+
+    const mergedPosts = [...updatedCurrentRangePosts, ...otherRangePosts];
     const updatedReport = {
-      ...safeReport,
-      posts: updatedPosts,
+      ...report,
+      startDate,
+      endDate,
+      posts: mergedPosts,
     };
     setReport(updatedReport);
     try {
@@ -429,7 +569,7 @@ export default function DashboardPage() {
 
     try {
       await axios.put(`/api/report-details/${safeReport.id}`, {
-        posts: updatedPosts,
+        posts: mergedPosts,
       });
     } catch (err) {
       console.warn('API update posts notice:', err);
