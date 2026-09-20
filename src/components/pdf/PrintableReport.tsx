@@ -50,6 +50,21 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
     const isInstagram = String(post?.platform || '').toLowerCase() === 'instagram';
     const platformLabel = isInstagram ? 'INSTAGRAM' : 'TIKTOK';
     const videoTitle = `${platformLabel} #${idx + 1}`;
+    const displayTitle = post?.caption || post?.title || 'Featured Content Post';
+    const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
+
+    let creatorHandle = 'creator';
+    if (post?.permalink) {
+      const ttMatch = post.permalink.match(/@([^/?#]+)/);
+      if (ttMatch) {
+        creatorHandle = ttMatch[1];
+      } else if (post.permalink.includes('instagram.com')) {
+        creatorHandle = safeClient.name ? safeClient.name.toLowerCase().replace(/[^a-z0-9_.]/g, '') : 'instagram';
+      }
+    }
+    if (creatorHandle === 'creator' && safeClient.name) {
+      creatorHandle = safeClient.name.toLowerCase().replace(/[^a-z0-9_.]/g, '') || 'creator';
+    }
 
     return (
       <div key={post?.id || idx} className="flex flex-col items-center">
@@ -57,81 +72,145 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
           {videoTitle}
         </div>
 
+        {/* Modern Media Card (No Phone Frame) */}
         <div
-          className={`relative rounded-[28px] overflow-hidden flex flex-col justify-between shadow-xl ${
-            isCompact ? 'w-36 h-56 p-1.5 border-[3px] border-gray-900' : 'w-44 h-72 p-2 border-4 border-gray-800'
+          className={`relative rounded-2xl overflow-hidden flex flex-col justify-between shadow-lg border border-gray-200 ${
+            isCompact ? 'w-36 h-56' : 'w-44 h-72'
           }`}
-          style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          style={{ backgroundColor: '#09090b', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
         >
-          {/* Phone Notch */}
+          {post?.thumbnailUrl ? (
+            <img
+              src={getProxiedUrl(post.thumbnailUrl)}
+              alt={displayTitle}
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+              loading="eager"
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+          ) : null}
+
+          {/* Vignette Gradients */}
           <div
-            className={`absolute top-1.5 left-1/2 -translate-x-1/2 rounded-full z-20 ${
-              isCompact ? 'w-12 h-2.5' : 'w-16 h-3'
-            }`}
-            style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+            className="absolute inset-x-0 top-0 h-16 pointer-events-none z-10"
+            style={{
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact',
+            }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 h-28 pointer-events-none z-10"
+            style={{
+              background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact',
+            }}
           />
 
-          <div
-            className="relative w-full h-full rounded-[20px] overflow-hidden"
-            style={{ backgroundColor: '#111827', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-          >
-            {post?.thumbnailUrl ? (
-              <img
-                src={getProxiedUrl(post.thumbnailUrl)}
-                alt={post?.title || 'Video Content'}
-                referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
-                loading="eager"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
+          {/* Top Bar: Handle & Rank */}
+          <div className="relative z-20 p-2 flex items-center justify-between text-white">
+            <div className="flex items-center gap-1 min-w-0">
+              <span
+                className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded text-white tracking-wider"
+                style={{
+                  backgroundColor: isInstagram ? '#e1306c' : '#000000',
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact',
                 }}
-              />
-            ) : null}
-
-            {/* Content Overlay & Fallback */}
-            <div
-              className={`absolute inset-0 flex flex-col justify-between z-10 ${isCompact ? 'p-2' : 'p-3.5'}`}
+              >
+                {isInstagram ? 'IG Reel' : 'TikTok'}
+              </span>
+              <span className="text-[8px] font-bold text-white truncate max-w-[65px] drop-shadow-sm">
+                @{creatorHandle}
+              </span>
+            </div>
+            <span
+              className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full text-white"
               style={{
-                background: post?.thumbnailUrl
-                  ? 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 40%, rgba(0,0,0,0.75) 100%)'
-                  : !isInstagram
-                  ? 'linear-gradient(135deg, #010101 0%, #161823 50%, #fe2c55 120%)'
-                  : 'linear-gradient(135deg, #405de6 0%, #5851db 30%, #833ab4 60%, #c13584 85%, #e1306c 100%)',
+                backgroundColor: 'rgba(0,0,0,0.6)',
                 WebkitPrintColorAdjust: 'exact',
                 printColorAdjust: 'exact',
               }}
             >
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full text-white tracking-wider"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.6)', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+              #{idx + 1}
+            </span>
+          </div>
+
+          {/* Bottom Pinned Card (Matching Reference) */}
+          <div className="relative z-20 m-1.5">
+            <div
+              className="rounded-xl p-1.5 shadow-md flex items-center gap-1.5"
+              style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e4e4e7',
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact',
+              }}
+            >
+              {/* Square Preview Thumbnail */}
+              <div
+                className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-gray-100 border border-gray-200"
+                style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+              >
+                {post?.thumbnailUrl ? (
+                  <img
+                    src={getProxiedUrl(post.thumbnailUrl)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-800" />
+                )}
+                <div
+                  className="absolute top-0 left-0 text-white text-[6px] font-black px-0.5 rounded-br"
+                  style={{
+                    backgroundColor: '#000000',
+                    WebkitPrintColorAdjust: 'exact',
+                    printColorAdjust: 'exact',
+                  }}
                 >
-                  {isInstagram ? 'Instagram' : 'TikTok'}
-                </span>
-                <span className="text-[8px] text-white/90 font-bold drop-shadow-sm">
-                  {post?.contentFormat || 'Video'}
-                </span>
+                  {idx + 1}
+                </div>
               </div>
 
-              <div className="mt-auto text-left">
-                <p className={`text-white font-bold line-clamp-2 leading-tight drop-shadow-md ${isCompact ? 'text-[9px]' : 'text-[11px]'}`}>
-                  {post?.caption || post?.title || 'Featured Content Post'}
+              {/* Details */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[8px] font-bold text-gray-900 truncate leading-tight">
+                  {displayTitle}
                 </p>
-                <div className={`mt-1 flex items-center justify-between text-white/90 font-semibold border-t border-white/20 pt-1 ${isCompact ? 'text-[8px]' : 'text-[9px]'}`}>
-                  <span>{formatNumberShort(post?.viewsCount ?? 0)} views</span>
-                  <span>{formatNumberShort(post?.likesCount ?? 0)} likes</span>
-                </div>
+                <p className="text-[7px] font-extrabold text-[#fe2c55] uppercase mt-0.5">
+                  Top Performer
+                </p>
+                <p className="text-[9px] font-black text-gray-950 leading-tight">
+                  {formattedViews} Views
+                </p>
+              </div>
+
+              {/* Red Pill CTA */}
+              <div
+                className="px-1.5 py-0.5 rounded text-white text-[7px] font-black shrink-0"
+                style={{
+                  backgroundColor: '#fe2c55',
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact',
+                }}
+              >
+                Watch
               </div>
             </div>
           </div>
         </div>
 
+        {/* Metrics Label Under Card */}
         <div className="mt-2 text-center">
-          <p className={`font-bold text-gray-900 leading-tight ${isCompact ? 'text-sm' : 'text-lg'}`}>
-            {formatNumberShort(post?.viewsCount ?? 0)}
+          <p className={`font-black text-gray-900 leading-tight ${isCompact ? 'text-xs' : 'text-base'}`}>
+            {formattedViews} Views
           </p>
-          <p className="text-[9px] font-bold tracking-widest text-gray-600 uppercase mt-0.5">
+          <p className="text-[8px] font-bold tracking-widest text-gray-500 uppercase mt-0.5">
             {platformLabel} • {post?.contentFormat || 'Videos'}
           </p>
         </div>

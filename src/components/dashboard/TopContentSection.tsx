@@ -18,6 +18,11 @@ import {
   Link as LinkIcon,
   Sparkles,
   Check,
+  Ticket,
+  ShoppingBag,
+  Zap,
+  Flame,
+  ArrowUpRight,
 } from 'lucide-react';
 
 interface TopContentSectionProps {
@@ -38,6 +43,22 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'link' | 'manual'>('link');
   const [platformView, setPlatformView] = useState<'split' | 'all' | 'instagram' | 'tiktok'>('split');
+  const [cardStyle, setCardStyle] = useState<'product' | 'coupon'>('product');
+
+  const getProxiedUrl = (url: string | null | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('/api/image-proxy')) return url;
+    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+    if (
+      url.includes('cdninstagram.com') ||
+      url.includes('fbcdn.net') ||
+      url.includes('tiktokcdn') ||
+      url.includes('tiktokv.com')
+    ) {
+      return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
 
   // Link Tab State
   const [inputUrl, setInputUrl] = useState('');
@@ -199,15 +220,34 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-4xl mx-auto">
         {postList.map((post, idx) => {
+          const isInstagram = String(post?.platform || '').toLowerCase() === 'instagram';
           const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
           const platformLabel = String(post?.platform || 'instagram').toUpperCase();
-          const videoTitle = `${platformLabelPrefix ? `${platformLabelPrefix.toUpperCase()} ` : ''}VIDEO #${idx + 1}`;
+          const videoTitle = `${platformLabelPrefix ? `${platformLabelPrefix.toUpperCase()} ` : ''}#${idx + 1}`;
           const displayTitle = post.title || post.caption || `${clientName || 'Client'} Feature`;
+
+          // Infer handle from permalink or client name
+          let creatorHandle = 'creator';
+          if (post?.permalink) {
+            const ttMatch = post.permalink.match(/@([^/?#]+)/);
+            if (ttMatch) {
+              creatorHandle = ttMatch[1];
+            } else if (post.permalink.includes('instagram.com')) {
+              creatorHandle = clientName ? clientName.toLowerCase().replace(/[^a-z0-9_.]/g, '') : 'instagram';
+            }
+          }
+          if (creatorHandle === 'creator' && clientName) {
+            creatorHandle = clientName.toLowerCase().replace(/[^a-z0-9_.]/g, '') || 'creator';
+          }
 
           return (
             <div key={post.id || idx} className="flex flex-col items-center group relative">
-              <div className="mb-3 text-sm font-semibold tracking-wider text-gray-600 uppercase flex items-center justify-between w-56 px-1">
-                <span>{videoTitle}</span>
+              {/* Card Label Header */}
+              <div className="mb-2.5 text-xs font-bold tracking-wider text-gray-500 uppercase flex items-center justify-between w-64 px-1">
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${isInstagram ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-black'}`}></span>
+                  {videoTitle}
+                </span>
                 {onUpdatePosts && (
                   <button
                     onClick={() => handleDeletePost(post.id || post.postId)}
@@ -219,73 +259,191 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                 )}
               </div>
 
-              {/* Smartphone Mockup */}
-              <div className="relative w-56 h-[400px] bg-black rounded-[36px] p-2.5 shadow-2xl border-4 border-gray-800 flex flex-col justify-between overflow-hidden">
-                {/* Phone Notch */}
-                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-full z-20 flex items-center justify-center">
-                  <div className="w-2.5 h-2.5 rounded-full bg-gray-900 border border-gray-800"></div>
+              {/* Modern Portrait Media Card (No Phone Frame) */}
+              <div className="relative w-64 h-[440px] rounded-3xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-gray-200/80 bg-gray-950 flex flex-col justify-between">
+                {/* Full Media Image Cover */}
+                {post.thumbnailUrl ? (
+                  <img
+                    src={getProxiedUrl(post.thumbnailUrl)}
+                    alt={displayTitle}
+                    crossOrigin="anonymous"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                  />
+                ) : (
+                  <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
+                    <Play className="w-10 h-10 mb-2 opacity-50 text-white" />
+                    <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
+                  </div>
+                )}
+
+                {/* Top & Bottom Vignette Gradients */}
+                <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none z-10" />
+                <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-10" />
+
+                {/* Top Overlay Bar: Creator Info & Live Rank */}
+                <div className="relative z-20 p-3 flex items-center justify-between text-white">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${
+                      isInstagram
+                        ? 'bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600 p-[1.5px]'
+                        : 'bg-black border border-white/40'
+                    }`}>
+                      <div className="w-full h-full rounded-full bg-gray-900 flex items-center justify-center text-[10px] text-white uppercase font-bold">
+                        {creatorHandle.slice(0, 2)}
+                      </div>
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold leading-tight max-w-[85px] truncate text-white drop-shadow-sm">
+                          @{creatorHandle}
+                        </span>
+                        <svg className="w-3 h-3 text-[#20d5ec] fill-current shrink-0" viewBox="0 0 24 24">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                        </svg>
+                      </div>
+                      <span className="text-[9px] font-semibold text-white/80 uppercase tracking-wider">
+                        {isInstagram ? 'Instagram' : 'TikTok'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <div className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/20 flex items-center gap-1 text-[10px] font-extrabold text-white shadow-sm">
+                      <Flame className="w-3 h-3 text-[#fe2c55]" />
+                      <span>#{idx + 1}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="relative w-full h-full rounded-[28px] overflow-hidden bg-gray-950">
-                  {post.thumbnailUrl ? (
-                    <img
-                      src={post.thumbnailUrl}
-                      alt={displayTitle}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                {/* Right Side Floating Engagement Stack */}
+                <div className="absolute right-2.5 bottom-28 z-20 flex flex-col items-center gap-3 text-white">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                      <Heart className="w-4 h-4 text-white fill-white/25" />
+                    </div>
+                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.likesCount ?? 0)}</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                      <MessageCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.commentsCount ?? 0)}</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                      <Share2 className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.sharesCount ?? 0)}</span>
+                  </div>
+                </div>
+
+                {/* Bottom Pinned Card (Matching Reference Image) */}
+                <div className="relative z-20 mx-2.5 mb-2.5">
+                  {cardStyle === 'product' ? (
+                    /* Pinned Product Card Format */
+                    <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/80 flex items-center gap-2 transition-transform group-hover:-translate-y-0.5">
+                      {/* Square Thumbnail Preview with Number Overlay */}
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-gray-100 border border-gray-200/90 shadow-xs">
+                        {post.thumbnailUrl ? (
+                          <img
+                            src={getProxiedUrl(post.thumbnailUrl)}
+                            alt={displayTitle}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-900 flex items-center justify-center text-white">
+                            <Play className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div className="absolute top-0 left-0 bg-black/85 text-white text-[8px] font-black px-1 py-0.2 rounded-br-md">
+                          {idx + 1}
+                        </div>
+                      </div>
+
+                      {/* Content Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="bg-gray-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shrink-0">
+                            {isInstagram ? 'Reel' : 'Video'}
+                          </span>
+                          <p className="text-[11px] font-bold text-gray-900 truncate leading-tight">
+                            {displayTitle}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Zap className="w-2.5 h-2.5 text-[#fe2c55] fill-[#fe2c55]" />
+                          <span className="text-[9px] font-extrabold text-[#fe2c55] uppercase tracking-wider">
+                            Top Performer
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1 mt-0.5">
+                          <span className="text-xs font-black text-gray-950">
+                            {formattedViews} Views
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Red CTA Button */}
+                      {post.permalink ? (
+                        <a
+                          href={post.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95"
+                        >
+                          <span>Watch</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => alert(`Top post: ${displayTitle}`)}
+                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95 cursor-pointer"
+                        >
+                          <span>Watch</span>
+                        </button>
+                      )}
+                    </div>
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
-                      <Play className="w-10 h-10 mb-2 opacity-50" />
-                      <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
+                    /* Pinned Coupon / Stat Card Format */
+                    <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/80 flex items-center gap-2.5 transition-transform group-hover:-translate-y-0.5">
+                      <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center shrink-0 text-[#fe2c55]">
+                        <Ticket className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-black text-gray-950 truncate">
+                          {formattedViews} Views
+                        </div>
+                        <p className="text-[10px] text-gray-600 font-medium truncate mt-0.5">
+                          {displayTitle}
+                        </p>
+                      </div>
+                      {post.permalink ? (
+                        <a
+                          href={post.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95"
+                        >
+                          <span>Watch</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => alert(`Top post: ${displayTitle}`)}
+                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95 cursor-pointer"
+                        >
+                          <span>Watch</span>
+                        </button>
+                      )}
                     </div>
                   )}
-
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none"></div>
-
-                  {/* Right Side Stats Column */}
-                  <div className="absolute right-2.5 bottom-12 flex flex-col items-center gap-3.5 z-10 text-white">
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                        <Heart className="w-4 h-4 text-white fill-white/20" />
-                      </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.likesCount ?? 0)}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                        <MessageCircle className="w-4 h-4 text-white" />
-                      </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.commentsCount ?? 0)}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center">
-                        <Share2 className="w-4 h-4 text-white" />
-                      </div>
-                      <span className="text-[10px] font-semibold mt-0.5">{formatNumberShort(post?.sharesCount ?? 0)}</span>
-                    </div>
-                  </div>
-
-                  {/* Bottom Caption & External Link */}
-                  <div className="absolute bottom-3 left-3 right-12 z-10 text-white text-left">
-                    <p className="text-xs font-bold leading-snug line-clamp-2 drop-shadow-sm">
-                      {displayTitle}
-                    </p>
-                    {post.permalink && (
-                      <a
-                        href={post.permalink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[10px] text-gray-300 hover:text-white mt-1 underline"
-                      >
-                        View on {platformLabel} <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    )}
-                  </div>
                 </div>
               </div>
 
-              <div className="mt-4 text-center">
-                <p className="text-xl font-bold text-gray-900 leading-none">{formattedViews} Views</p>
-                <p className="text-xs font-semibold tracking-widest text-gray-500 uppercase mt-1">
+              {/* Bottom Metrics Below Card */}
+              <div className="mt-3.5 text-center">
+                <p className="text-xl font-black text-gray-900 leading-none">{formattedViews} Views</p>
+                <p className="text-xs font-bold tracking-widest text-gray-500 uppercase mt-1.5">
                   {platformLabel} • {post.contentFormat || 'Videos'}
                 </p>
               </div>
@@ -376,11 +534,40 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           </button>
         </div>
 
-        <div className="text-xs text-gray-400 font-medium">
-          {platformView === 'split' && 'Displaying top 3 Instagram & top 3 TikTok posts'}
-          {platformView === 'instagram' && 'Displaying top 3 Instagram posts by views'}
-          {platformView === 'tiktok' && 'Displaying top 3 TikTok posts by views'}
-          {platformView === 'all' && 'Displaying top 3 posts overall by views'}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Card Style Selector (Matching user reference image: Pinned Product vs Pinned Coupon) */}
+          <div className="inline-flex p-1 bg-gray-100 rounded-xl items-center">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2">Style:</span>
+            <button
+              onClick={() => setCardStyle('product')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                cardStyle === 'product'
+                  ? 'bg-white text-gray-900 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-[#fe2c55]" />
+              Pinned Product Card
+            </button>
+            <button
+              onClick={() => setCardStyle('coupon')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                cardStyle === 'coupon'
+                  ? 'bg-white text-gray-900 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Ticket className="w-3.5 h-3.5 text-[#fe2c55]" />
+              Pinned Coupon Card
+            </button>
+          </div>
+
+          <div className="text-xs text-gray-400 font-medium">
+            {platformView === 'split' && 'Displaying top 3 Instagram & top 3 TikTok posts'}
+            {platformView === 'instagram' && 'Displaying top 3 Instagram posts by views'}
+            {platformView === 'tiktok' && 'Displaying top 3 TikTok posts by views'}
+            {platformView === 'all' && 'Displaying top 3 posts overall by views'}
+          </div>
         </div>
       </div>
 
