@@ -31,14 +31,26 @@ export async function GET(request: Request) {
     );
   }
 
-  const clientKey = process.env.TIKTOK_CLIENT_KEY || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || 'mock_tiktok_secret';
+  const envKey = process.env.TIKTOK_CLIENT_KEY || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || '';
+  const clientKey = envKey === 'awzwmzqb12ijk009' ? '' : envKey;
+  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || '';
   const redirectUri = `${origin}/api/auth/callback/tiktok`;
 
   // Read PKCE code verifier from cookie if present
   const cookieHeader = request && request.headers ? request.headers.get('cookie') || '' : '';
   const match = cookieHeader.match(/tiktok_code_verifier=([^;]+)/);
   const codeVerifier = match ? decodeURIComponent(match[1].trim()) : null;
+
+  if (!clientKey) {
+    return new Response(
+      `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
+        <h2 style="color:#b00020;">TikTok Configuration Error</h2>
+        <p>A valid TikTok Client Key is required from developers.tiktok.com.</p>
+        <p>You can also connect your TikTok profile directly using your username in Settings without needing a developer app.</p>
+      </body></html>`,
+      { status: 500, headers: { 'Content-Type': 'text/html' } }
+    );
+  }
 
   // Fail loudly instead of silently issuing a fake token when real secret isn't configured
   if (!clientSecret || clientSecret.startsWith('mock_')) {
@@ -114,9 +126,17 @@ export async function GET(request: Request) {
           <p style="color: #666; font-size: 14px;">Closing window and updating Koko Digital Studio dashboard...</p>
           <script>
             if (window.opener) {
+              try {
+                window.opener.postMessage({
+                  type: 'TIKTOK_AUTH_SUCCESS',
+                  accountId: '${ttAccountId}',
+                  accessToken: '${accessToken}',
+                  clientId: '${clientId}'
+                }, '*');
+              } catch (e) {}
               window.opener.location.reload();
             }
-            setTimeout(function() { window.close(); }, 1500);
+            setTimeout(function() { window.close(); }, 1200);
           </script>
         </body>
       </html>`,

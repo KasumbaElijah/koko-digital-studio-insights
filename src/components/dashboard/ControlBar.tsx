@@ -19,6 +19,7 @@ interface ControlBarProps {
     instagram?: boolean;
     tiktok?: boolean;
     instagramHandle?: string;
+    tiktokHandle?: string;
     pageName?: string;
   };
   availablePages?: MetaPageItem[];
@@ -58,8 +59,8 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-        {/* Client Switcher */}
-        <div className="flex items-center gap-3">
+        {/* Client Switcher & Platform Badges */}
+        <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Client:</label>
           {clients.length > 0 ? (
             <select
@@ -81,6 +82,8 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               + Add Client Account
             </Link>
           )}
+
+          {/* Instagram Badge */}
           {connectedPlatforms?.instagram ? (
             <div className="flex items-center gap-2">
               {availablePages && availablePages.length > 1 ? (
@@ -114,7 +117,17 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                 </span>
               )}
             </div>
-          ) : (
+          ) : null}
+
+          {/* TikTok Badge */}
+          {connectedPlatforms?.tiktok ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-800 font-semibold border border-gray-300">
+              <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
+              TikTok Live {connectedPlatforms.tiktokHandle ? `(${connectedPlatforms.tiktokHandle})` : 'Connected'}
+            </span>
+          ) : null}
+
+          {!connectedPlatforms?.instagram && !connectedPlatforms?.tiktok && (
             <Link
               href="/settings"
               className="hidden sm:inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-medium border border-neutral-200 transition-colors"

@@ -41,6 +41,7 @@ export default function DashboardPage() {
     instagram?: boolean;
     tiktok?: boolean;
     instagramHandle?: string;
+    tiktokHandle?: string;
     pageName?: string;
   }>({});
 
@@ -56,6 +57,9 @@ export default function DashboardPage() {
       const connected = params.get('connected');
       if (connected === 'instagram') {
         setConnectedPlatforms((prev) => ({ ...prev, instagram: true }));
+      }
+      if (connected === 'tiktok') {
+        setConnectedPlatforms((prev) => ({ ...prev, tiktok: true }));
       }
     } catch (e) {
       console.warn('URL params parse error:', e);
@@ -86,6 +90,10 @@ export default function DashboardPage() {
         const activePage = localStorage.getItem(`koko_active_page_id_${selectedClientId}`);
         const activePageName = localStorage.getItem(`koko_active_page_name_${selectedClientId}`);
 
+        const directTtToken = localStorage.getItem(`koko_active_tt_token_${selectedClientId}`);
+        const directTtAcct = localStorage.getItem(`koko_active_tt_account_${selectedClientId}`);
+        const directTtUser = localStorage.getItem(`koko_active_tt_username_${selectedClientId}`);
+
         setActivePageId(activePage || '');
 
         // Load cached Meta pages if available
@@ -107,10 +115,15 @@ export default function DashboardPage() {
           }
         } catch (e) {}
 
+        const ttHandleDisplay = directTtUser
+          ? (directTtUser.startsWith('@') ? directTtUser : `@${directTtUser}`)
+          : (tt?.platformAccountId || directTtAcct || undefined);
+
         setConnectedPlatforms({
           instagram: !!ig || !!directIg,
-          tiktok: !!tt,
+          tiktok: !!tt || !!directTtToken || !!directTtAcct,
           instagramHandle: directUser ? `@${directUser}` : (ig?.platformAccountId || directAcct || undefined),
+          tiktokHandle: ttHandleDisplay,
           pageName: activePageName || (ig?.pageName || undefined),
         });
       } catch (e) {
@@ -414,6 +427,8 @@ export default function DashboardPage() {
     try {
       let igToken = '';
       let igAccountId = '';
+      let ttToken = '';
+      let ttAccountId = '';
       const cleanPageOverride = typeof targetPageOverride === 'string' ? targetPageOverride : undefined;
       let pageId = cleanPageOverride || (typeof activePageId === 'string' ? activePageId : '') || '';
       try {
@@ -425,6 +440,11 @@ export default function DashboardPage() {
             igToken = ig.accessToken;
             igAccountId = ig.platformAccountId;
             if (!pageId && ig.pageId) pageId = ig.pageId;
+          }
+          const tt = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
+          if (tt) {
+            ttToken = tt.accessToken;
+            ttAccountId = tt.platformAccountId;
           }
         }
       } catch (e) {}
@@ -439,12 +459,21 @@ export default function DashboardPage() {
         } catch (e) {}
       }
 
+      if (!ttToken) {
+        try {
+          ttToken = localStorage.getItem(`koko_active_tt_token_${selectedClientId}`) || '';
+          ttAccountId = localStorage.getItem(`koko_active_tt_account_${selectedClientId}`) || '';
+        } catch (e) {}
+      }
+
       const res = await axios.post('/api/sync', {
         clientId: selectedClientId,
         startDate,
         endDate,
         accessToken: igToken,
         platformAccountId: igAccountId,
+        tiktokAccessToken: ttToken,
+        tiktokPlatformAccountId: ttAccountId,
         pageId,
         existingPosts: report?.posts || [],
       });
