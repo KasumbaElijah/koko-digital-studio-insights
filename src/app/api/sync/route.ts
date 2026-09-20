@@ -138,6 +138,7 @@ export async function POST(request: Request) {
       ttPosts = generated.map((p, idx) => ({
         ...p,
         clientId,
+        platform: 'tiktok' as const,
         format: p.contentFormat,
         id: p.id || `post_tt_${idx}`,
       }));
