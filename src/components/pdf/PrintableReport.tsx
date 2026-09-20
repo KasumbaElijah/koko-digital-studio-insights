@@ -15,6 +15,12 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
   const safeReport = report || ({} as Partial<MonthlyReportData>);
   const safeClient = client || ({ name: 'Client' } as ClientData);
 
+  const getProxiedUrl = (url?: string | null) => {
+    if (!url) return '';
+    if (url.startsWith('/') || url.startsWith('data:')) return url;
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  };
+
   const formatData = getFormatDistribution(safeReport.posts || []);
   const distributionData = getPlatformDistribution(safeReport.posts || []);
   const topPosts = getTopPerformingPosts(safeReport.posts || [], 3);
@@ -308,18 +314,68 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
                     {idx === 0 ? 'VIDEO #1' : idx === 1 ? 'VIDEO #2' : 'VIDEO #3'}
                   </div>
 
-                  <div className="relative w-44 h-72 bg-black rounded-[32px] p-2 border-4 border-gray-800 shadow-xl overflow-hidden flex flex-col justify-between">
-                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 bg-black rounded-full z-20"></div>
+                  <div 
+                    className="relative w-44 h-72 rounded-[32px] p-2 border-4 border-gray-800 shadow-xl overflow-hidden flex flex-col justify-between"
+                    style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                  >
+                    <div 
+                      className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3 rounded-full z-20"
+                      style={{ backgroundColor: '#000000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                    />
 
-                    <div className="relative w-full h-full rounded-[24px] overflow-hidden bg-gray-900">
+                    <div 
+                      className="relative w-full h-full rounded-[24px] overflow-hidden"
+                      style={{ backgroundColor: '#111827', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                    >
                       {post?.thumbnailUrl ? (
-                        <img src={post.thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 text-xs p-3 text-center">
-                          <span className="font-semibold line-clamp-3">{post?.title || 'Video Content'}</span>
+                        <img 
+                          src={getProxiedUrl(post.thumbnailUrl)} 
+                          alt={post?.title || 'Video Content'} 
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          loading="eager"
+                          className="w-full h-full object-cover" 
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : null}
+
+                      {/* Content Overlay & Fallback */}
+                      <div 
+                        className="absolute inset-0 flex flex-col justify-between p-3.5 z-10"
+                        style={{
+                          background: post?.thumbnailUrl 
+                            ? 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 40%, rgba(0,0,0,0.75) 100%)'
+                            : post?.platform === 'tiktok'
+                            ? 'linear-gradient(135deg, #010101 0%, #161823 50%, #fe2c55 120%)'
+                            : 'linear-gradient(135deg, #405de6 0%, #5851db 30%, #833ab4 60%, #c13584 85%, #e1306c 100%)',
+                          WebkitPrintColorAdjust: 'exact',
+                          printColorAdjust: 'exact',
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span 
+                            className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full text-white tracking-wider"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.6)', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+                          >
+                            {post?.platform === 'tiktok' ? 'TikTok' : 'Instagram'}
+                          </span>
+                          <span className="text-[9px] text-white/90 font-bold drop-shadow-sm">
+                            {post?.contentFormat || 'Video'}
+                          </span>
                         </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70"></div>
+
+                        <div className="mt-auto text-left">
+                          <p className="text-white text-[11px] font-bold line-clamp-2 leading-tight drop-shadow-md">
+                            {post?.caption || post?.title || 'Featured Content Post'}
+                          </p>
+                          <div className="mt-1.5 flex items-center justify-between text-[9px] text-white/90 font-semibold border-t border-white/20 pt-1">
+                            <span>{formatNumberShort(post?.viewsCount ?? 0)} views</span>
+                            <span>{formatNumberShort(post?.likesCount ?? 0)} likes</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

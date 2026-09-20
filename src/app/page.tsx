@@ -576,11 +576,35 @@ export default function DashboardPage() {
     }
   };
 
-  const handlePrintPdf = () => {
+  const handlePrintPdf = async () => {
     setActiveTab('pdf-preview');
+
+    // Preload top post thumbnail images so they are fully loaded before print dialog renders
+    const postsToPreload = (safeReport.posts || []).slice(0, 6);
+    const preloadPromises = postsToPreload.map((p) => {
+      if (!p.thumbnailUrl) return Promise.resolve(true);
+      const proxied = p.thumbnailUrl.startsWith('http')
+        ? `/api/image-proxy?url=${encodeURIComponent(p.thumbnailUrl)}`
+        : p.thumbnailUrl;
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.referrerPolicy = 'no-referrer';
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = proxied;
+        setTimeout(() => resolve(false), 1500);
+      });
+    });
+
+    try {
+      await Promise.all(preloadPromises);
+    } catch {}
+
     setTimeout(() => {
       window.print();
-    }, 300);
+    }, 450);
   };
 
   const formatData = getFormatDistribution(safeReport.posts || []);
