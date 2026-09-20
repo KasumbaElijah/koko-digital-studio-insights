@@ -136,11 +136,22 @@ export async function POST(request: Request) {
         ttMetrics?.totalViews || 312000
       );
       ttPosts = generated.map((p, idx) => ({
-        ...p,
+        id: p.postId || p.id || `post_tt_${idx}`,
+        postId: p.postId || p.id || `post_tt_${idx}`,
         clientId,
         platform: 'tiktok' as const,
+        title: p.title || 'TikTok Video',
+        caption: p.caption || '',
+        permalink: p.permalink || '',
+        contentFormat: p.contentFormat,
         format: p.contentFormat,
-        id: p.id || `post_tt_${idx}`,
+        viewsCount: p.viewsCount,
+        likesCount: p.likesCount,
+        commentsCount: p.commentsCount,
+        sharesCount: p.sharesCount,
+        thumbnailUrl: p.thumbnailUrl || null,
+        isTopPerformer: p.isTopPerformer,
+        publishedAt: p.publishedAt,
       }));
     }
 
