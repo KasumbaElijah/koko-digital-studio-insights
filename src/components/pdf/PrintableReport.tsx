@@ -14,6 +14,7 @@ import {
 } from '@/lib/analytics';
 import { FormatBarChart } from '../charts/FormatBarChart';
 import { DistributionPieChart } from '../charts/DistributionPieChart';
+import { Volume2, Flame } from 'lucide-react';
 
 
 interface PrintableReportProps {
@@ -50,8 +51,9 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
     const isInstagram = String(post?.platform || '').toLowerCase() === 'instagram';
     const platformLabel = isInstagram ? 'INSTAGRAM' : 'TIKTOK';
     const videoTitle = `${platformLabel} #${idx + 1}`;
-    const displayTitle = post?.caption || post?.title || 'Featured Content Post';
+    const displayTitle = post?.caption || post?.title || `${safeClient.name || 'Client'} Feature`;
     const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
+    const formattedLikes = formatNumberShort(post?.likesCount ?? 0);
 
     let creatorHandle = 'creator';
     if (post?.permalink) {
@@ -66,153 +68,166 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
       creatorHandle = safeClient.name.toLowerCase().replace(/[^a-z0-9_.]/g, '') || 'creator';
     }
 
+    // Engagement rate
+    const totalEng = (Number(post?.likesCount) || 0) + (Number(post?.commentsCount) || 0) + (Number(post?.sharesCount) || 0);
+    const views = Number(post?.viewsCount) || 0;
+    const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '7.0';
+
+    // Tags
+    const tagMatches = (post?.caption || post?.title || '').match(/#[a-zA-Z0-9_]+/g);
+    let tagsList: string[] = [];
+    if (tagMatches && tagMatches.length > 0) {
+      tagsList = tagMatches.map((t: string) => t.replace('#', ''));
+    } else {
+      tagsList = [post?.contentFormat || 'Videos', isInstagram ? 'Reels' : 'TikTok', 'Creative'];
+    }
+    const displayTags =
+      tagsList.slice(0, 3).join(' • ') +
+      (tagsList.length > 3 ? ` +${tagsList.length - 3}` : '');
+
     return (
-      <div key={post?.id || idx} className="flex flex-col items-center">
-        <div className={`mb-1.5 text-center font-bold tracking-wider text-gray-700 uppercase ${isCompact ? 'text-[9px]' : 'text-xs'}`}>
+      <div key={post?.id || idx} className="flex flex-col items-center w-full">
+        {/* Header Label */}
+        <div className={`mb-1.5 font-bold tracking-wider text-gray-700 uppercase flex items-center gap-1.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>
+          <span
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{
+              backgroundColor: isInstagram ? '#e1306c' : '#000000',
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact',
+            }}
+          />
           {videoTitle}
         </div>
 
-        {/* Modern Media Card (No Phone Frame) */}
+        {/* 9:16 Card: Media Up, Information Down */}
         <div
-          className={`relative rounded-2xl overflow-hidden flex flex-col justify-between shadow-lg border border-gray-200 ${
-            isCompact ? 'w-36 h-56' : 'w-44 h-72'
+          className={`w-full bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col ${
+            isCompact ? 'p-2 max-w-[170px]' : 'p-2.5 max-w-[210px]'
           }`}
-          style={{ backgroundColor: '#09090b', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          style={{
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          }}
         >
-          {post?.thumbnailUrl ? (
-            <img
-              src={getProxiedUrl(post.thumbnailUrl)}
-              alt={displayTitle}
-              referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
-              loading="eager"
-              className="absolute inset-0 w-full h-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
-          ) : null}
-
-          {/* Vignette Gradients */}
+          {/* MEDIA UP: 9:16 Aspect Ratio */}
           <div
-            className="absolute inset-x-0 top-0 h-16 pointer-events-none z-10"
-            style={{
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
-              WebkitPrintColorAdjust: 'exact',
-              printColorAdjust: 'exact',
-            }}
-          />
-          <div
-            className="absolute inset-x-0 bottom-0 h-28 pointer-events-none z-10"
-            style={{
-              background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
-              WebkitPrintColorAdjust: 'exact',
-              printColorAdjust: 'exact',
-            }}
-          />
-
-          {/* Top Bar: Handle & Rank */}
-          <div className="relative z-20 p-2 flex items-center justify-between text-white">
-            <div className="flex items-center gap-1 min-w-0">
-              <span
-                className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded text-white tracking-wider"
-                style={{
-                  backgroundColor: isInstagram ? '#e1306c' : '#000000',
-                  WebkitPrintColorAdjust: 'exact',
-                  printColorAdjust: 'exact',
+            className="relative w-full aspect-[9/16] rounded-xl overflow-hidden bg-gray-950"
+            style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+          >
+            {post?.thumbnailUrl ? (
+              <img
+                src={getProxiedUrl(post.thumbnailUrl)}
+                alt={displayTitle}
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                loading="eager"
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
                 }}
-              >
-                {isInstagram ? 'IG Reel' : 'TikTok'}
-              </span>
-              <span className="text-[8px] font-bold text-white truncate max-w-[65px] drop-shadow-sm">
-                @{creatorHandle}
-              </span>
-            </div>
-            <span
-              className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full text-white"
+              />
+            ) : (
+              <div className="absolute inset-0 w-full h-full bg-gray-900" />
+            )}
+
+            {/* Top Sound Button */}
+            <div
+              className={`absolute top-2 left-2 rounded-full flex items-center justify-center text-white z-10 ${
+                isCompact ? 'w-5 h-5' : 'w-6 h-6'
+              }`}
               style={{
                 backgroundColor: 'rgba(0,0,0,0.6)',
                 WebkitPrintColorAdjust: 'exact',
                 printColorAdjust: 'exact',
               }}
             >
-              #{idx + 1}
-            </span>
-          </div>
+              <Volume2 className={isCompact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+            </div>
 
-          {/* Bottom Pinned Card (Matching Reference) */}
-          <div className="relative z-20 m-1.5">
+            {/* Top-Right Rank Tag */}
             <div
-              className="rounded-xl p-1.5 shadow-md flex items-center gap-1.5"
+              className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-white font-extrabold flex items-center gap-0.5 z-10"
               style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #e4e4e7',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                fontSize: isCompact ? '7px' : '8px',
                 WebkitPrintColorAdjust: 'exact',
                 printColorAdjust: 'exact',
               }}
             >
-              {/* Square Preview Thumbnail */}
+              <Flame className={isCompact ? 'w-2 h-2 text-[#fe2c55]' : 'w-2.5 h-2.5 text-[#fe2c55]'} />
+              <span>#{idx + 1}</span>
+            </div>
+
+            {/* Bottom Overlay on Media: Avatar, Name, Flag, Likes/Views */}
+            <div
+              className="absolute inset-x-0 bottom-0 p-2 pt-6 flex items-center gap-1.5 text-white z-10"
+              style={{
+                background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)',
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact',
+              }}
+            >
               <div
-                className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-gray-100 border border-gray-200"
+                className={`rounded-full border border-white overflow-hidden bg-gray-900 shrink-0 flex items-center justify-center font-bold text-white uppercase ${
+                  isCompact ? 'w-5 h-5 text-[6px]' : 'w-6 h-6 text-[7px]'
+                }`}
                 style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
               >
-                {post?.thumbnailUrl ? (
-                  <img
-                    src={getProxiedUrl(post.thumbnailUrl)}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-800" />
-                )}
-                <div
-                  className="absolute top-0 left-0 text-white text-[6px] font-black px-0.5 rounded-br"
-                  style={{
-                    backgroundColor: '#000000',
-                    WebkitPrintColorAdjust: 'exact',
-                    printColorAdjust: 'exact',
-                  }}
-                >
-                  {idx + 1}
+                {creatorHandle.slice(0, 2)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-0.5">
+                  <p className={`font-bold text-white truncate leading-tight drop-shadow-sm ${isCompact ? 'text-[7px]' : 'text-[8px]'}`}>
+                    {displayTitle}
+                  </p>
+                  <span className="text-[7px] shrink-0">🇺🇬</span>
                 </div>
-              </div>
-
-              {/* Details */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[8px] font-bold text-gray-900 truncate leading-tight">
-                  {displayTitle}
+                <p className={`text-white/80 font-semibold mt-0.5 drop-shadow-sm ${isCompact ? 'text-[6px]' : 'text-[7px]'}`}>
+                  {formattedLikes} • {formattedViews} views
                 </p>
-                <p className="text-[7px] font-extrabold text-[#fe2c55] uppercase mt-0.5">
-                  Top Performer
-                </p>
-                <p className="text-[9px] font-black text-gray-950 leading-tight">
-                  {formattedViews} Views
-                </p>
-              </div>
-
-              {/* Red Pill CTA */}
-              <div
-                className="px-1.5 py-0.5 rounded text-white text-[7px] font-black shrink-0"
-                style={{
-                  backgroundColor: '#fe2c55',
-                  WebkitPrintColorAdjust: 'exact',
-                  printColorAdjust: 'exact',
-                }}
-              >
-                Watch
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Metrics Label Under Card */}
-        <div className="mt-2 text-center">
-          <p className={`font-black text-gray-900 leading-tight ${isCompact ? 'text-xs' : 'text-base'}`}>
-            {formattedViews} Views
-          </p>
-          <p className="text-[8px] font-bold tracking-widest text-gray-500 uppercase mt-0.5">
-            {platformLabel} • {post?.contentFormat || 'Videos'}
-          </p>
+          {/* INFORMATION DOWN: Metrics, Handle, Tags */}
+          <div className="pt-2 px-0.5">
+            {/* 3-Column Stats Row with Dividers */}
+            <div className="grid grid-cols-3 divide-x divide-gray-200 text-left items-center">
+              <div className="pr-1">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{formattedLikes}</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5">likes</p>
+              </div>
+              <div className="px-1">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{formattedViews}</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5">avg views</p>
+              </div>
+              <div className="pl-1">
+                <p className={`font-black text-gray-900 leading-none ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{engRate}%</p>
+                <p className="text-[6px] text-gray-400 font-medium mt-0.5">engagement</p>
+              </div>
+            </div>
+
+            {/* Platform Icon & Handle */}
+            <div className={`mt-2 flex items-center gap-1 font-semibold text-gray-700 ${isCompact ? 'text-[8px]' : 'text-[9px]'}`}>
+              {isInstagram ? (
+                <svg className="w-2.5 h-2.5 text-[#e1306c] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+              ) : (
+                <svg className="w-2.5 h-2.5 text-gray-900 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-1-.08A6.34 6.34 0 0 0 3 15.66a6.34 6.34 0 0 0 10.86 4.43 6.3 6.3 0 0 0 1.89-4.43V8.71a8.28 8.28 0 0 0 4.84 1.55V6.8a4.85 4.85 0 0 1-1-.11z"/>
+                </svg>
+              )}
+              <span className="truncate">@{creatorHandle}</span>
+            </div>
+
+            {/* Tags line */}
+            <div className={`mt-0.5 text-gray-400 font-medium truncate ${isCompact ? 'text-[6px]' : 'text-[7px]'}`}>
+              {displayTags}
+            </div>
+          </div>
         </div>
       </div>
     );

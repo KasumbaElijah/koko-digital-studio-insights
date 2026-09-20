@@ -18,11 +18,10 @@ import {
   Link as LinkIcon,
   Sparkles,
   Check,
-  Ticket,
-  ShoppingBag,
   Zap,
   Flame,
   ArrowUpRight,
+  Volume2,
 } from 'lucide-react';
 
 interface TopContentSectionProps {
@@ -43,7 +42,6 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'link' | 'manual'>('link');
   const [platformView, setPlatformView] = useState<'split' | 'all' | 'instagram' | 'tiktok'>('split');
-  const [cardStyle, setCardStyle] = useState<'product' | 'coupon'>('product');
 
   const getProxiedUrl = (url: string | null | undefined) => {
     if (!url) return '';
@@ -222,6 +220,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
         {postList.map((post, idx) => {
           const isInstagram = String(post?.platform || '').toLowerCase() === 'instagram';
           const formattedViews = formatNumberShort(post?.viewsCount ?? 0);
+          const formattedLikes = formatNumberShort(post?.likesCount ?? 0);
           const platformLabel = String(post?.platform || 'instagram').toUpperCase();
           const videoTitle = `${platformLabelPrefix ? `${platformLabelPrefix.toUpperCase()} ` : ''}#${idx + 1}`;
           const displayTitle = post.title || post.caption || `${clientName || 'Client'} Feature`;
@@ -240,10 +239,27 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
             creatorHandle = clientName.toLowerCase().replace(/[^a-z0-9_.]/g, '') || 'creator';
           }
 
+          // Compute engagement rate
+          const totalEng = (Number(post?.likesCount) || 0) + (Number(post?.commentsCount) || 0) + (Number(post?.sharesCount) || 0);
+          const views = Number(post?.viewsCount) || 0;
+          const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '7.0';
+
+          // Extract tags from caption or fallback to formats
+          const tagMatches = (post?.caption || post?.title || '').match(/#[a-zA-Z0-9_]+/g);
+          let tagsList: string[] = [];
+          if (tagMatches && tagMatches.length > 0) {
+            tagsList = tagMatches.map((t) => t.replace('#', ''));
+          } else {
+            tagsList = [post?.contentFormat || 'Videos', isInstagram ? 'Reels' : 'TikTok', 'Creative'];
+          }
+          const displayTags =
+            tagsList.slice(0, 3).join(' • ') +
+            (tagsList.length > 3 ? ` +${tagsList.length - 3}` : '');
+
           return (
-            <div key={post.id || idx} className="flex flex-col items-center group relative">
+            <div key={post.id || idx} className="flex flex-col items-center group relative w-full max-w-[280px] mx-auto">
               {/* Card Label Header */}
-              <div className="mb-2.5 text-xs font-bold tracking-wider text-gray-500 uppercase flex items-center justify-between w-64 px-1">
+              <div className="mb-2 text-xs font-bold tracking-wider text-gray-500 uppercase flex items-center justify-between w-full px-1">
                 <span className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${isInstagram ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-black'}`}></span>
                   {videoTitle}
@@ -259,193 +275,105 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
                 )}
               </div>
 
-              {/* Modern Portrait Media Card (No Phone Frame) */}
-              <div className="relative w-64 h-[440px] rounded-3xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-gray-200/80 bg-gray-950 flex flex-col justify-between">
-                {/* Full Media Image Cover */}
-                {post.thumbnailUrl ? (
-                  <img
-                    src={getProxiedUrl(post.thumbnailUrl)}
-                    alt={displayTitle}
-                    crossOrigin="anonymous"
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  />
-                ) : (
-                  <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
-                    <Play className="w-10 h-10 mb-2 opacity-50 text-white" />
-                    <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
-                  </div>
-                )}
-
-                {/* Top & Bottom Vignette Gradients */}
-                <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none z-10" />
-                <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-10" />
-
-                {/* Top Overlay Bar: Creator Info & Live Rank */}
-                <div className="relative z-20 p-3 flex items-center justify-between text-white">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-bold text-xs shrink-0 ${
-                      isInstagram
-                        ? 'bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600 p-[1.5px]'
-                        : 'bg-black border border-white/40'
-                    }`}>
-                      <div className="w-full h-full rounded-full bg-gray-900 flex items-center justify-center text-[10px] text-white uppercase font-bold">
-                        {creatorHandle.slice(0, 2)}
-                      </div>
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-bold leading-tight max-w-[85px] truncate text-white drop-shadow-sm">
-                          @{creatorHandle}
-                        </span>
-                        <svg className="w-3 h-3 text-[#20d5ec] fill-current shrink-0" viewBox="0 0 24 24">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                        </svg>
-                      </div>
-                      <span className="text-[9px] font-semibold text-white/80 uppercase tracking-wider">
-                        {isInstagram ? 'Instagram' : 'TikTok'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <div className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/20 flex items-center gap-1 text-[10px] font-extrabold text-white shadow-sm">
-                      <Flame className="w-3 h-3 text-[#fe2c55]" />
-                      <span>#{idx + 1}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Side Floating Engagement Stack */}
-                <div className="absolute right-2.5 bottom-28 z-20 flex flex-col items-center gap-3 text-white">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                      <Heart className="w-4 h-4 text-white fill-white/25" />
-                    </div>
-                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.likesCount ?? 0)}</span>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                      <MessageCircle className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.commentsCount ?? 0)}</span>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                      <Share2 className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold mt-0.5 drop-shadow">{formatNumberShort(post?.sharesCount ?? 0)}</span>
-                  </div>
-                </div>
-
-                {/* Bottom Pinned Card (Matching Reference Image) */}
-                <div className="relative z-20 mx-2.5 mb-2.5">
-                  {cardStyle === 'product' ? (
-                    /* Pinned Product Card Format */
-                    <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/80 flex items-center gap-2 transition-transform group-hover:-translate-y-0.5">
-                      {/* Square Thumbnail Preview with Number Overlay */}
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-gray-100 border border-gray-200/90 shadow-xs">
-                        {post.thumbnailUrl ? (
-                          <img
-                            src={getProxiedUrl(post.thumbnailUrl)}
-                            alt={displayTitle}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-900 flex items-center justify-center text-white">
-                            <Play className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div className="absolute top-0 left-0 bg-black/85 text-white text-[8px] font-black px-1 py-0.2 rounded-br-md">
-                          {idx + 1}
-                        </div>
-                      </div>
-
-                      {/* Content Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span className="bg-gray-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shrink-0">
-                            {isInstagram ? 'Reel' : 'Video'}
-                          </span>
-                          <p className="text-[11px] font-bold text-gray-900 truncate leading-tight">
-                            {displayTitle}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <Zap className="w-2.5 h-2.5 text-[#fe2c55] fill-[#fe2c55]" />
-                          <span className="text-[9px] font-extrabold text-[#fe2c55] uppercase tracking-wider">
-                            Top Performer
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-0.5">
-                          <span className="text-xs font-black text-gray-950">
-                            {formattedViews} Views
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Red CTA Button */}
-                      {post.permalink ? (
-                        <a
-                          href={post.permalink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95"
-                        >
-                          <span>Watch</span>
-                          <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <button
-                          onClick={() => alert(`Top post: ${displayTitle}`)}
-                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95 cursor-pointer"
-                        >
-                          <span>Watch</span>
-                        </button>
-                      )}
-                    </div>
+              {/* 9:16 Card: Media Up, Information Down */}
+              <div className="w-full bg-white rounded-[28px] p-3 shadow-md hover:shadow-xl border border-gray-100 flex flex-col transition-all duration-300">
+                {/* MEDIA UP: 9:16 Aspect Ratio */}
+                <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-gray-950 shadow-inner group/media">
+                  {post.thumbnailUrl ? (
+                    <img
+                      src={getProxiedUrl(post.thumbnailUrl)}
+                      alt={displayTitle}
+                      crossOrigin="anonymous"
+                      className="absolute inset-0 w-full h-full object-cover group-hover/media:scale-105 transition-transform duration-700"
+                    />
                   ) : (
-                    /* Pinned Coupon / Stat Card Format */
-                    <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/80 flex items-center gap-2.5 transition-transform group-hover:-translate-y-0.5">
-                      <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center shrink-0 text-[#fe2c55]">
-                        <Ticket className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-black text-gray-950 truncate">
-                          {formattedViews} Views
-                        </div>
-                        <p className="text-[10px] text-gray-600 font-medium truncate mt-0.5">
-                          {displayTitle}
-                        </p>
-                      </div>
-                      {post.permalink ? (
-                        <a
-                          href={post.permalink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95"
-                        >
-                          <span>Watch</span>
-                          <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <button
-                          onClick={() => alert(`Top post: ${displayTitle}`)}
-                          className="px-3 py-1.5 bg-[#fe2c55] hover:bg-[#e0264b] text-white text-[11px] font-extrabold rounded-xl shadow-sm transition-all shrink-0 flex items-center gap-0.5 active:scale-95 cursor-pointer"
-                        >
-                          <span>Watch</span>
-                        </button>
-                      )}
+                    <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gray-900 text-gray-400 p-4 text-center">
+                      <Play className="w-10 h-10 mb-2 opacity-50 text-white" />
+                      <span className="text-xs font-semibold text-gray-300 line-clamp-3">{displayTitle}</span>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Bottom Metrics Below Card */}
-              <div className="mt-3.5 text-center">
-                <p className="text-xl font-black text-gray-900 leading-none">{formattedViews} Views</p>
-                <p className="text-xs font-bold tracking-widest text-gray-500 uppercase mt-1.5">
-                  {platformLabel} • {post.contentFormat || 'Videos'}
-                </p>
+                  {/* Sound button top-left (matching reference) */}
+                  <div className="absolute top-3 left-3 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white shadow-sm z-10">
+                    <Volume2 className="w-4 h-4" />
+                  </div>
+
+                  {/* Rank tag top-right */}
+                  <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-extrabold flex items-center gap-1 border border-white/20 z-10 shadow-sm">
+                    <Flame className="w-3 h-3 text-[#fe2c55]" />
+                    <span>#{idx + 1}</span>
+                  </div>
+
+                  {/* Media Bottom Overlay: Avatar, Name, and Views (matching reference) */}
+                  <div className="absolute inset-x-0 bottom-0 p-3 pt-12 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-center gap-2.5 text-white z-10">
+                    {/* Avatar circle */}
+                    <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden bg-gray-900 shrink-0 flex items-center justify-center text-xs font-bold text-white shadow-md">
+                      <span className="uppercase">{creatorHandle.slice(0, 2)}</span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        <p className="font-bold text-xs text-white truncate leading-tight drop-shadow-sm">
+                          {displayTitle}
+                        </p>
+                        <span className="text-xs shrink-0">🇺🇬</span>
+                      </div>
+                      <p className="text-[10px] text-white/80 font-semibold mt-0.5 drop-shadow-sm">
+                        {formattedLikes} • {formattedViews} views
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* INFORMATION DOWN: Metrics, Handle, Tags (matching reference) */}
+                <div className="pt-4 pb-1 px-1">
+                  {/* 3-Column Stats Row with Dividers */}
+                  <div className="grid grid-cols-3 divide-x divide-gray-200 text-left items-center">
+                    <div className="pr-1.5">
+                      <p className="text-lg font-black text-gray-900 leading-none">{formattedLikes}</p>
+                      <p className="text-[11px] text-gray-400 font-medium mt-1">likes</p>
+                    </div>
+                    <div className="px-1.5">
+                      <p className="text-lg font-black text-gray-900 leading-none">{formattedViews}</p>
+                      <p className="text-[11px] text-gray-400 font-medium mt-1">avg views</p>
+                    </div>
+                    <div className="pl-1.5">
+                      <p className="text-lg font-black text-gray-900 leading-none">{engRate}%</p>
+                      <p className="text-[11px] text-gray-400 font-medium mt-1">engagement</p>
+                    </div>
+                  </div>
+
+                  {/* Platform Icon & Handle */}
+                  <div className="mt-3.5 flex items-center gap-1.5 text-sm font-semibold text-gray-600">
+                    {isInstagram ? (
+                      <svg className="w-4 h-4 text-[#e1306c] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-gray-900 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-1-.08A6.34 6.34 0 0 0 3 15.66a6.34 6.34 0 0 0 10.86 4.43 6.3 6.3 0 0 0 1.89-4.43V8.71a8.28 8.28 0 0 0 4.84 1.55V6.8a4.85 4.85 0 0 1-1-.11z"/>
+                      </svg>
+                    )}
+                    {post.permalink ? (
+                      <a
+                        href={post.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-gray-900 truncate hover:underline flex items-center gap-1"
+                      >
+                        @{creatorHandle}
+                        <ArrowUpRight className="w-3 h-3 text-gray-400" />
+                      </a>
+                    ) : (
+                      <span className="truncate">@{creatorHandle}</span>
+                    )}
+                  </div>
+
+                  {/* Tags line */}
+                  <div className="mt-1.5 text-xs text-gray-400 font-medium truncate">
+                    {displayTags}
+                  </div>
+                </div>
               </div>
             </div>
           );
@@ -534,40 +462,11 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Card Style Selector (Matching user reference image: Pinned Product vs Pinned Coupon) */}
-          <div className="inline-flex p-1 bg-gray-100 rounded-xl items-center">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2">Style:</span>
-            <button
-              onClick={() => setCardStyle('product')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                cardStyle === 'product'
-                  ? 'bg-white text-gray-900 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5 text-[#fe2c55]" />
-              Pinned Product Card
-            </button>
-            <button
-              onClick={() => setCardStyle('coupon')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                cardStyle === 'coupon'
-                  ? 'bg-white text-gray-900 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              <Ticket className="w-3.5 h-3.5 text-[#fe2c55]" />
-              Pinned Coupon Card
-            </button>
-          </div>
-
-          <div className="text-xs text-gray-400 font-medium">
-            {platformView === 'split' && 'Displaying top 3 Instagram & top 3 TikTok posts'}
-            {platformView === 'instagram' && 'Displaying top 3 Instagram posts by views'}
-            {platformView === 'tiktok' && 'Displaying top 3 TikTok posts by views'}
-            {platformView === 'all' && 'Displaying top 3 posts overall by views'}
-          </div>
+        <div className="text-xs text-gray-400 font-medium">
+          {platformView === 'split' && 'Displaying top 3 Instagram & top 3 TikTok posts'}
+          {platformView === 'instagram' && 'Displaying top 3 Instagram posts by views'}
+          {platformView === 'tiktok' && 'Displaying top 3 TikTok posts by views'}
+          {platformView === 'all' && 'Displaying top 3 posts overall by views'}
         </div>
       </div>
 
