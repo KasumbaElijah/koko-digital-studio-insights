@@ -42,9 +42,10 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
   const ttDistributionData = getPlatformFormatDistribution(safeReport.posts || [], 'tiktok');
   const hasBothFormats = (igDistributionData || []).length > 0 && (ttDistributionData || []).length > 0;
 
-  const topOverallPosts = getTopPerformingPosts(safeReport.posts || [], 3);
-  const igTopPosts = getTopPerformingPostsByPlatform(safeReport.posts || [], 'instagram', 3);
-  const ttTopPosts = getTopPerformingPostsByPlatform(safeReport.posts || [], 'tiktok', 3);
+  const feedPosts = (safeReport.posts || []).filter((p) => p.contentFormat !== 'Stories');
+  const topOverallPosts = getTopPerformingPosts(feedPosts.length > 0 ? feedPosts : (safeReport.posts || []), 3);
+  const igTopPosts = getTopPerformingPostsByPlatform(feedPosts.length > 0 ? feedPosts : (safeReport.posts || []), 'instagram', 3);
+  const ttTopPosts = getTopPerformingPostsByPlatform(feedPosts.length > 0 ? feedPosts : (safeReport.posts || []), 'tiktok', 3);
   const hasBothTopPlatforms = igTopPosts.length > 0 && ttTopPosts.length > 0;
 
   const renderPhoneCard = (post: any, idx: number, isCompact = false) => {

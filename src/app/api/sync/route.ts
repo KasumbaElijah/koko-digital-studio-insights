@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       postId: p.postId || `post_ig_${idx}`,
       clientId,
       platform: 'instagram' as const,
-      title: p.title || (p.contentFormat === 'Videos' ? 'High Traction Video Reel' : 'Instagram Feature'),
+      title: p.title || (p.contentFormat === 'Stories' ? 'Daily Instagram Story' : (p.contentFormat === 'Videos' ? 'High Traction Video Reel' : 'Instagram Feature')),
       caption: p.caption || '',
       permalink: p.permalink || '',
       contentFormat: p.contentFormat,

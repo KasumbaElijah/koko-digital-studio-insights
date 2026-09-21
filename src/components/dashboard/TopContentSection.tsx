@@ -90,9 +90,12 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
   const igPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'instagram');
   const ttPosts = (posts || []).filter((p) => String(p?.platform || '').toLowerCase() === 'tiktok');
 
-  const topOverallPosts = getTopPerformingPosts(posts, 3);
-  const topIgPosts = (getTopPerformingPosts(igPosts, 3) || []);
-  const topTtPosts = (getTopPerformingPosts(ttPosts, 3) || []);
+  const igFeedPosts = igPosts.filter((p) => p.contentFormat !== 'Stories');
+  const ttFeedPosts = ttPosts.filter((p) => p.contentFormat !== 'Stories');
+
+  const topOverallPosts = getTopPerformingPosts((posts || []).filter((p) => p.contentFormat !== 'Stories'), 3);
+  const topIgPosts = (getTopPerformingPosts(igFeedPosts.length > 0 ? igFeedPosts : igPosts, 3) || []);
+  const topTtPosts = (getTopPerformingPosts(ttFeedPosts.length > 0 ? ttFeedPosts : ttPosts, 3) || []);
 
   // Fetch preview for TikTok or Instagram URL
   const handleFetchPreview = async () => {
