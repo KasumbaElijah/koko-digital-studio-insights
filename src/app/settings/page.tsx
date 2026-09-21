@@ -903,7 +903,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-200">
         <div>
           <Link
-            href="/dashboard"
+            href="/"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-black mb-2 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -1131,7 +1131,7 @@ export default function SettingsPage() {
 
                 <div className="pt-2 space-y-2.5">
                   <Link
-                    href="/dashboard"
+                    href="/"
                     className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                   >
                     View Live Analytics in Dashboard →
@@ -1306,7 +1306,7 @@ export default function SettingsPage() {
 
                 <div className="pt-2 space-y-2.5">
                   <Link
-                    href="/dashboard"
+                    href="/"
                     className="w-full py-3 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                   >
                     View Live Analytics in Dashboard →

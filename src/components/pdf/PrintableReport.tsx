@@ -566,13 +566,11 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
           </div>
 
           {/* KOKO DIGITAL STUDIO Logo */}
-          <div className="text-right flex flex-col items-end">
-            <img
-              src="/images/koko-logo-black.png"
-              alt="KOKO"
-              className="h-7 w-auto object-contain mb-1"
-            />
-            <div className="text-[9px] font-bold tracking-[0.3em] text-gray-800 uppercase">
+          <div className="text-right">
+            <div className="text-3xl font-black tracking-tighter text-gray-900 font-heading leading-none">
+              KOKO
+            </div>
+            <div className="text-[9px] font-bold tracking-[0.3em] text-gray-800 uppercase mt-0.5">
               DIGITAL STUDIO
             </div>
             <div className="text-[8px] font-semibold text-gray-500 tracking-wider mt-0.5">
@@ -679,13 +677,11 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({ report, client
 
         {/* Page 2 Footer Logo */}
         <div className="flex justify-end pt-8">
-          <div className="text-right flex flex-col items-end">
-            <img
-              src="/images/koko-logo-black.png"
-              alt="KOKO"
-              className="h-7 w-auto object-contain mb-1"
-            />
-            <div className="text-[9px] font-bold tracking-[0.3em] text-gray-800 uppercase">
+          <div className="text-right">
+            <div className="text-3xl font-black tracking-tighter text-gray-900 font-heading leading-none">
+              KOKO
+            </div>
+            <div className="text-[9px] font-bold tracking-[0.3em] text-gray-800 uppercase mt-0.5">
               DIGITAL STUDIO
             </div>
             <div className="text-[8px] font-semibold text-gray-500 tracking-wider mt-0.5">

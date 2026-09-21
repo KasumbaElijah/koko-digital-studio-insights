@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       postId: p.postId || `post_ig_${idx}`,
       clientId,
       platform: 'instagram' as const,
-      title: p.title || (p.contentFormat === 'Stories' ? 'Daily Instagram Story' : (p.contentFormat === 'Videos' ? 'High Traction Video Reel' : 'Instagram Feature')),
+      title: p.title || (p.contentFormat === 'Videos' ? 'High Traction Video Reel' : 'Instagram Feature'),
       caption: p.caption || '',
       permalink: p.permalink || '',
       contentFormat: p.contentFormat,
@@ -209,12 +209,6 @@ export async function POST(request: Request) {
     const insightsList = [
       `Live Instagram analytics synced for ${igPlatformAccountId}. Video reels are driving 65%+ of aggregate audience views over this ${daysDiff}-day window.`,
     ];
-    const totalStoriesCount = posts.filter((p) => p.contentFormat === 'Stories').length;
-    if (totalStoriesCount > 0) {
-      insightsList.push(
-        `Active Stories cadence verified across channels (${totalStoriesCount} stories logged) maintaining consistent daily audience touchpoints.`
-      );
-    }
     if (isTikTokConnected) {
       insightsList.push(
         `Live TikTok analytics active for ${ttPlatformAccountId}. Short-form video distribution pacing at ${ttEngagement}% average engagement rate.`
