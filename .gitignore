@@ -20,5 +20,6 @@ install.log
 # IDEs & System
 .DS_Store
 *.pem
+*.tsbuildinfo
 .vscode/
 .idea/

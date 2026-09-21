@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 
     // 1. Handle TikTok URLs
     if (url.includes('tiktok.com')) {
+      const isTtStory = url.includes('/story/') || url.includes('/stories/');
       try {
         const oembedRes = await axios.get('https://www.tiktok.com/oembed', {
           params: { url },
@@ -25,8 +26,8 @@ export async function GET(request: Request) {
           return NextResponse.json({
             success: true,
             platform: 'tiktok',
-            contentFormat: 'Videos',
-            title: data.title || 'TikTok Video',
+            contentFormat: isTtStory ? 'Stories' : 'Videos',
+            title: data.title || (isTtStory ? 'TikTok Story' : 'TikTok Video'),
             thumbnailUrl: data.thumbnail_url || null,
             authorName: data.author_name || data.author_unique_id || '',
             authorUsername: data.author_unique_id ? `@${data.author_unique_id}` : '',
@@ -40,10 +41,11 @@ export async function GET(request: Request) {
 
     // 2. Handle Instagram URLs
     if (url.includes('instagram.com')) {
+      const isStory = url.includes('/stories/');
       const isReel = url.includes('/reel/') || url.includes('/reels/');
-      const format = isReel ? 'Videos' : 'Image';
+      const format = isStory ? 'Stories' : (isReel ? 'Videos' : 'Image');
       let shortcode = '';
-      const match = url.match(/\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+      const match = url.match(/\/(?:p|reel|reels|tv|stories)\/([A-Za-z0-9_-]+)/);
       if (match && match[1]) {
         shortcode = match[1];
       }

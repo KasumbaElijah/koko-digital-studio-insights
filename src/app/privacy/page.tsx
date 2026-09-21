@@ -9,29 +9,30 @@ export const metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="max-w-4xl mx-auto py-10 px-4 sm:px-6">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-black mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        Back to Dashboard
-      </Link>
+    <div className="min-h-screen bg-[#0a0a0c] py-12 px-4 sm:px-6 lg:px-8 text-zinc-100">
+      <div className="max-w-4xl mx-auto">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-zinc-400 hover:text-red-400 mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Agency Home
+        </Link>
 
-      <div className="bg-white border border-gray-200 rounded-3xl p-8 sm:p-12 shadow-sm space-y-6 text-gray-800 text-sm leading-relaxed">
-        <div className="flex items-center gap-3 pb-6 border-b border-gray-100">
-          <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center font-bold text-xl">
-            <ShieldCheck className="w-6 h-6 text-emerald-400" />
+        <div className="bg-[#131317] border border-zinc-800 rounded-3xl p-8 sm:p-12 shadow-2xl space-y-6 text-zinc-300 text-sm leading-relaxed">
+          <div className="flex items-center gap-3 pb-6 border-b border-zinc-800">
+            <div className="w-12 h-12 bg-red-600/20 border border-red-500/30 text-red-500 rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg shadow-red-950/40">
+              <ShieldCheck className="w-6 h-6 text-red-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-heading">
+                Privacy Policy & Data Protection
+              </h1>
+              <p className="text-xs text-zinc-400 mt-1">
+                Effective Date: 2026 | Koko Digital Studio (Kampala & Nairobi)
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 font-heading">
-              Privacy Policy & Data Protection
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Effective Date: August 24, 2026 | Koko Digital Studio Insights
-            </p>
-          </div>
-        </div>
 
         <section className="space-y-3">
           <h2 className="text-lg font-bold text-gray-900 font-heading">1. Introduction</h2>
@@ -71,17 +72,18 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-900 font-heading">6. Contact Us</h2>
+          <h2 className="text-lg font-bold text-white font-heading">6. Contact Us</h2>
           <p>
             If you have any questions regarding this Privacy Policy, please contact Koko Digital Studio at:
           </p>
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 font-medium text-xs text-gray-800">
+          <div className="bg-[#1a1a22] border border-zinc-800 rounded-xl p-4 font-medium text-xs text-zinc-300">
             Koko Digital Studio Privacy & Data Protection Team<br />
             Email: privacy@kokodigital.studio<br />
-            Website: https://kasumbaelijah.github.io/koko-digital-studio-insights/
+            Kampala HQ • Nairobi Hub
           </div>
         </section>
       </div>
     </div>
+  </div>
   );
 }
