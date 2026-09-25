@@ -31,9 +31,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const envKey = process.env.TIKTOK_CLIENT_KEY || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || '';
-  const clientKey = envKey === 'awzwmzqb12ijk009' ? '' : envKey;
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || '';
+  const clientKey = (process.env.TIKTOK_CLIENT_KEY || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009').trim();
+  const clientSecret = (process.env.TIKTOK_CLIENT_SECRET || '0Zb7Xi3fyDH4uRsIH5zSBndADoEnXZoj').trim();
   const redirectUri = `${origin}/api/auth/callback/tiktok`;
 
   // Read PKCE code verifier from cookie if present

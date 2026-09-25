@@ -139,35 +139,60 @@ export async function fetchTikTokProfileVideos(
     ]);
 
     const html = embedRes?.data;
-    const match = typeof html === 'string' ? html.match(/"videoList":(\[\{.*?\}\])/) : null;
-    if (!match) {
+    let userInfo: any = null;
+    let rawVideos: any[] = [];
+
+    // 1. Parse official __FRONTITY_CONNECT_STATE__ json embedded in TikTok embed page
+    const frontityMatch = typeof html === 'string' ? html.match(/<script id="__FRONTITY_CONNECT_STATE__"[^>]*>([\s\S]*?)<\/script>/) : null;
+    if (frontityMatch) {
+      try {
+        const state = JSON.parse(frontityMatch[1]);
+        const dataMap = state.source?.data || {};
+        const key = Object.keys(dataMap).find((k) => k.toLowerCase().includes(cleanUsername.toLowerCase()));
+        if (key && dataMap[key]) {
+          userInfo = dataMap[key].userInfo;
+          if (Array.isArray(dataMap[key].videoList)) {
+            rawVideos = dataMap[key].videoList;
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!userInfo && typeof html === 'string') {
+      const vMatch = html.match(/"videoList":(\[\{.*?\}\]|\[\])/);
+      if (vMatch) {
+        try { rawVideos = JSON.parse(vMatch[1]); } catch {}
+      }
+    }
+
+    const followerCount = userInfo?.followerCount ?? profileHeader?.followerCount;
+    const nickname = userInfo?.nickname ?? profileHeader?.nickname ?? cleanUsername;
+    const avatarUrl = userInfo?.avatarThumbUrl ?? profileHeader?.avatarUrl;
+    const heartCount = userInfo?.heartCount ?? profileHeader?.heartCount ?? 0;
+    const videoCount = rawVideos.length || profileHeader?.videoCount || 0;
+
+    const isRecognized = Boolean(userInfo || profileHeader || embedRes?.status === 200);
+
+    if (!isRecognized && rawVideos.length === 0) {
       return {
         success: false,
         username: cleanUsername,
-        nickname: profileHeader?.nickname || cleanUsername,
-        avatarUrl: profileHeader?.avatarUrl,
-        followerCount: profileHeader?.followerCount,
-        heartCount: profileHeader?.heartCount,
-        videoCount: profileHeader?.videoCount,
+        nickname: cleanUsername,
         posts: [],
       };
     }
 
-    let rawVideos: any[] = [];
-    try {
-      rawVideos = JSON.parse(match[1]);
-    } catch {
-      return { success: false, username: cleanUsername, posts: [] };
-    }
-
-    if (!Array.isArray(rawVideos) || rawVideos.length === 0) {
-      return { success: false, username: cleanUsername, posts: [] };
-    }
-
-    let nickname = profileHeader?.nickname || cleanUsername;
-    if (!profileHeader?.nickname && html) {
-      const nickMatch = html.match(/"nickname":"([^"]+)"/);
-      if (nickMatch) nickname = nickMatch[1];
+    if (rawVideos.length === 0) {
+      return {
+        success: true,
+        username: cleanUsername,
+        nickname,
+        avatarUrl,
+        followerCount,
+        heartCount,
+        videoCount,
+        posts: [],
+      };
     }
 
     // 2. Fetch live metrics (exact likes, comments, shares, views, publishedAt) for each video in parallel

@@ -179,34 +179,6 @@ export async function fetchTikTokMetrics(
     }
   }
 
-  // 3. If API and profile returned 0 posts, fallback to portfolio blueprints
-  if (postsList.length === 0 && cleanUsername) {
-    const baseViews = totalViews > 0 ? totalViews : Math.round(312000 * dateScale);
-    const baseFollowers = Math.max(1, Math.round(2840 * dateScale));
-    postsList = generateTikTokPortfolio(cleanUsername, startDate, endDate, baseViews).map((p) => ({
-      postId: p.postId,
-      title: p.title,
-      caption: p.caption,
-      permalink: p.permalink || undefined,
-      contentFormat: p.contentFormat,
-      viewsCount: p.viewsCount,
-      likesCount: p.likesCount,
-      commentsCount: p.commentsCount,
-      sharesCount: p.sharesCount,
-      thumbnailUrl: p.thumbnailUrl,
-      publishedAt: p.publishedAt,
-    }));
-    totalViews = baseViews;
-    totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount + p.sharesCount, 0);
-
-    return {
-      followersGrowth: baseFollowers,
-      totalViews: baseViews,
-      engagementRate: 5.8,
-      posts: postsList,
-    };
-  }
-
   const engagementRate = totalViews > 0
     ? parseFloat(((totalEngagements / totalViews) * 100).toFixed(1))
     : 0;

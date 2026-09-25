@@ -144,34 +144,7 @@ export async function POST(request: Request) {
       publishedAt: p.publishedAt,
     }));
 
-    if (effectiveTtHandle && ttPosts.length === 0) {
-      const generated = generateTikTokPortfolio(
-        effectiveTtHandle,
-        startDate,
-        endDate,
-        ttMetrics?.totalViews || 312000
-      );
-      ttPosts = generated.map((p, idx) => ({
-        id: p.postId || p.id || `post_tt_${idx}`,
-        postId: p.postId || p.id || `post_tt_${idx}`,
-        clientId,
-        platform: 'tiktok' as const,
-        title: p.title || 'TikTok Video',
-        caption: p.caption || '',
-        permalink: p.permalink || '',
-        contentFormat: p.contentFormat,
-        format: p.contentFormat,
-        viewsCount: p.viewsCount,
-        likesCount: p.likesCount,
-        commentsCount: p.commentsCount,
-        sharesCount: p.sharesCount,
-        newFollowers: p.newFollowers ?? 0,
-        thumbnailUrl: p.thumbnailUrl || null,
-        isTopPerformer: p.isTopPerformer,
-        publishedAt: p.publishedAt,
-      }));
-    }
-
+    // Real posts only - no fake portfolio blueprints
     const incomingPosts = [...igPosts, ...ttPosts];
     const incomingIds = new Set(incomingPosts.map((p) => p.postId || p.id));
     const preservedOldPosts = existingPostsFromClient.filter(
@@ -189,30 +162,29 @@ export async function POST(request: Request) {
     const sDateObj = new Date(startDateStr);
     const eDateObj = new Date(endDateStr);
     const daysDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-    const dateScale = daysDiff / 30;
+
+    const igPostsSumViews = igPosts.reduce((acc, p) => acc + (Number(p.viewsCount) || 0), 0);
+    const igPostsSumEng = igPosts.reduce((acc, p) => acc + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0), 0);
+    const igRealEngRate = igPostsSumViews > 0 ? parseFloat(((igPostsSumEng / igPostsSumViews) * 100).toFixed(1)) : (igMetrics?.engagementRate || 0);
 
     const igFollowers = isInstagramConnected
-      ? (igMetrics?.followersGrowth != null ? igMetrics.followersGrowth : Math.max(1, Math.round(1240 * dateScale)))
+      ? (igMetrics?.followersGrowth != null ? igMetrics.followersGrowth : 0)
       : 0;
 
     const igViews = isInstagramConnected
-      ? (igMetrics?.totalViews != null && igMetrics.totalViews > 0 ? igMetrics.totalViews : Math.round(167000 * dateScale))
+      ? (igMetrics?.totalViews != null && igMetrics.totalViews > 0 ? igMetrics.totalViews : igPostsSumViews)
       : 0;
 
     const ttPostsSumViews = ttPosts.reduce((acc, p) => acc + (Number(p.viewsCount) || 0), 0);
     const ttPostsSumEng = ttPosts.reduce((acc, p) => acc + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
-    const ttRealEngRate = ttPostsSumViews > 0 ? parseFloat(((ttPostsSumEng / ttPostsSumViews) * 100).toFixed(1)) : 0;
+    const ttRealEngRate = ttPostsSumViews > 0 ? parseFloat(((ttPostsSumEng / ttPostsSumViews) * 100).toFixed(1)) : (ttMetrics?.engagementRate || 0);
 
     const ttFollowers = isTikTokConnected
-      ? (ttMetrics?.followersGrowth != null && ttMetrics.followersGrowth > 0
-          ? ttMetrics.followersGrowth
-          : (ttPostsSumViews > 0 ? Math.round(ttPostsSumViews * 0.15) : Math.max(1, Math.round(2840 * dateScale))))
+      ? (ttMetrics?.followersGrowth != null ? ttMetrics.followersGrowth : 0)
       : 0;
 
     const ttViews = isTikTokConnected
-      ? (ttMetrics?.totalViews != null && ttMetrics.totalViews > 0
-          ? ttMetrics.totalViews
-          : (ttPostsSumViews > 0 ? ttPostsSumViews : Math.round(312000 * dateScale)))
+      ? (ttMetrics?.totalViews != null && ttMetrics.totalViews > 0 ? ttMetrics.totalViews : ttPostsSumViews)
       : 0;
 
     const ttEngagement = isTikTokConnected

@@ -236,9 +236,11 @@ export default function DashboardPage() {
               .get(`/api/tiktok/posts?username=${cleanTtUser}`)
               .then((res) => {
                 if (currentClientId !== selectedClientId) return;
-                if (res.data?.success && Array.isArray(res.data?.posts) && res.data.posts.length > 0) {
-                  const realTtPosts = res.data.posts.map((p: any) => ({ ...p, clientId: currentClientId }));
-                  const realFollowers = res.data.followerCount;
+                if (res.data?.success) {
+                  const realTtPosts = Array.isArray(res.data?.posts)
+                    ? res.data.posts.map((p: any) => ({ ...p, clientId: currentClientId }))
+                    : [];
+                  const realFollowers = res.data.followerCount != null ? Number(res.data.followerCount) : undefined;
                   const totalTtViews = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.viewsCount) || 0), 0);
                   const totalTtEng = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
                   const realTtEngRate = totalTtViews > 0 ? Number(((totalTtEng / totalTtViews) * 100).toFixed(1)) : 0;
@@ -255,9 +257,9 @@ export default function DashboardPage() {
                       ...prev,
                       clientId: currentClientId,
                       posts: merged,
-                      ...(realFollowers ? { ttFollowersGrowth: realFollowers } : {}),
-                      ...(totalTtViews > 0 ? { ttViews: totalTtViews } : {}),
-                      ...(realTtEngRate > 0 ? { ttEngagementRate: realTtEngRate } : {}),
+                      ttFollowersGrowth: realFollowers != null ? realFollowers : (prev.ttFollowersGrowth || 0),
+                      ttViews: totalTtViews,
+                      ttEngagementRate: realTtEngRate,
                     };
                     try {
                       localStorage.setItem(`koko_report_${currentClientId}`, JSON.stringify(updatedReport));

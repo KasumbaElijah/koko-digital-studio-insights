@@ -26,9 +26,13 @@ export async function fetchInstagramMetrics(
   endDate: Date,
   targetPageId?: string
 ): Promise<InstagramMetricResult> {
-  const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === 'true' || !accessToken || accessToken.startsWith('mock_');
+  const isRealToken = accessToken &&
+    !accessToken.startsWith('mock_') &&
+    !accessToken.startsWith('ig_direct_') &&
+    !accessToken.startsWith('active_') &&
+    accessToken.length > 20;
 
-  if (isMockMode) {
+  if (!isRealToken || process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
     return {
       followersGrowth: 0,
       totalViews: 0,

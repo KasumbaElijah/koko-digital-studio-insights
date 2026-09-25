@@ -95,10 +95,9 @@ export default function SettingsPage() {
   const [tiktokClientKey, setTiktokClientKey] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('koko_tiktok_client_key');
-      if (saved && saved !== 'awzwmzqb12ijk009') return saved;
+      if (saved) return saved;
     }
-    const envKey = process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || '';
-    return envKey === 'awzwmzqb12ijk009' ? '' : envKey;
+    return process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
   });
   const [tiktokClientSecret, setTiktokClientSecret] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -854,7 +853,7 @@ export default function SettingsPage() {
     }
   };
 
-  // 4. Trigger Official Meta / Instagram Business Login (Supports full Insights & Analytics)
+  // 4. Trigger Official Instagram Business Login (Direct Instagram Dialog)
   const triggerInstagramDirectLogin = () => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
@@ -866,11 +865,18 @@ export default function SettingsPage() {
         localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
       } catch (e) {}
     }
-    // Launch official Meta Login using direct verified scopes (bypasses config and email)
-    triggerMetaFacebookLogin(true);
+
+    const origin = getOAuthOrigin();
+    const appId = (metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
+    const state = encodeURIComponent(selectedClientId);
+    
+    // Official Business Login for Instagram OAuth Dialog (with Instagram login)
+    const igOauthUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish&state=${state}`;
+    openCenteredPopup(igOauthUrl, 'InstagramOAuth');
   };
 
-  // 5. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
+  // 5. Trigger Meta Facebook Business Login (With Config ID 1590313085890812)
   const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
@@ -883,13 +889,8 @@ export default function SettingsPage() {
       } catch (e) {}
     }
 
-    const fbAppId = '1532121481550639';
-    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || null);
-
-    if (!fbAppId || fbAppId.length < 5) {
-      setShowSetupGuide(true);
-      return;
-    }
+    const fbAppId = (metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
+    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812');
 
     const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
@@ -897,7 +898,7 @@ export default function SettingsPage() {
     
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code`;
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement&response_type=code`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };
@@ -909,10 +910,9 @@ export default function SettingsPage() {
       setShowAddClientModal(true);
       return;
     }
-    const clientKey = (tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || '').trim();
+    const clientKey = (tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009').trim();
 
-    if (!clientKey || clientKey === 'awzwmzqb12ijk009' || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
-      // Don't send user to broken TikTok error screen; open developer configuration
+    if (!clientKey || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
       setShowSetupGuide(true);
       return;
     }
@@ -1497,18 +1497,13 @@ export default function SettingsPage() {
                       if (ttIdentifier.trim()) {
                         handleConnectTikTokDirect();
                       } else {
-                        const key = (tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || '').trim();
-                        if (key && key !== 'awzwmzqb12ijk009' && key.length > 5) {
-                          triggerTikTokOAuthLogin();
-                        } else {
-                          alert('Please enter your TikTok username (e.g. @kokodigital) or phone number to connect directly.');
-                        }
+                        triggerTikTokOAuthLogin();
                       }
                     }}
                     className="w-full py-3.5 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.99]"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    {ttIdentifier.trim() ? 'Connect TikTok Profile' : 'Log in'}
+                    {ttIdentifier.trim() ? 'Connect TikTok Profile' : 'Log in with TikTok'}
                   </button>
 
                   {/* OR Divider Line */}
