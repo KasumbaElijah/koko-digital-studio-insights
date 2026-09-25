@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
-import { Layers, Key } from 'lucide-react';
+import { Layers, Key, Activity } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Koko Digital Studio Insights - Social Media Analytics & PDF Reporting',
@@ -47,6 +47,13 @@ export default function RootLayout({
               >
                 <Layers className="w-3.5 h-3.5" />
                 Dashboard
+              </Link>
+              <Link
+                href="/performance-tracker"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-800/60 transition-colors"
+              >
+                <Activity className="w-3.5 h-3.5 text-blue-400" />
+                Performance Tracker
               </Link>
               <Link
                 href="/settings"
