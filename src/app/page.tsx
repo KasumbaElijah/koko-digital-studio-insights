@@ -45,8 +45,17 @@ export default function DashboardPage() {
       try {
         localStorage.setItem('koko_selected_client_id', clientId);
         document.cookie = `koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=31536000; SameSite=Lax`;
+        const cached = localStorage.getItem(`koko_report_${clientId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (!parsed.clientId || parsed.clientId === clientId)) {
+            setReport({ ...parsed, clientId });
+            return;
+          }
+        }
       } catch (e) {}
     }
+    setReport(createEmptyReport(clientId));
   };
 
   // Meta Pages selection state
@@ -75,21 +84,21 @@ export default function DashboardPage() {
     pageName?: string;
   }>({});
 
-  // 1. Sync URL parameters on initial client mount & listen for OAuth messages
+  // 1. Sync URL parameters on initial client mount, purge legacy cookies, & listen for OAuth messages
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      // Invalidate legacy unscoped global cookies so they never bleed into other accounts
+      const expireStr = '=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = `koko_session_ig_connected${expireStr}`;
+      document.cookie = `koko_session_ig_account${expireStr}`;
+      document.cookie = `koko_session_tt_connected${expireStr}`;
+      document.cookie = `koko_session_tt_account${expireStr}`;
+
       const params = new URLSearchParams(window.location.search);
       const cid = params.get('clientId');
       if (cid) {
         handleSelectClient(cid);
-      }
-      const connected = params.get('connected');
-      if (connected === 'instagram') {
-        setConnectedPlatforms((prev) => ({ ...prev, instagram: true }));
-      }
-      if (connected === 'tiktok') {
-        setConnectedPlatforms((prev) => ({ ...prev, tiktok: true }));
       }
     } catch (e) {
       console.warn('URL params parse error:', e);
@@ -149,31 +158,36 @@ export default function DashboardPage() {
           } catch (e) {}
         }
 
-        let ig: any = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
-        let tt: any = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
+        const currentClientId = selectedClientId;
+        let ig: any = accounts.find((a) => a.clientId === currentClientId && a.platform === 'instagram');
+        let tt: any = accounts.find((a) => a.clientId === currentClientId && a.platform === 'tiktok');
 
-        const directIg = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`);
-        const directAcct = localStorage.getItem(`koko_active_ig_account_${selectedClientId}`);
-        const directUser = localStorage.getItem(`koko_active_ig_username_${selectedClientId}`);
-        const activePage = localStorage.getItem(`koko_active_page_id_${selectedClientId}`);
-        const activePageName = localStorage.getItem(`koko_active_page_name_${selectedClientId}`);
+        const directIg = localStorage.getItem(`koko_active_ig_token_${currentClientId}`);
+        const directAcct = localStorage.getItem(`koko_active_ig_account_${currentClientId}`);
+        const directUser = localStorage.getItem(`koko_active_ig_username_${currentClientId}`);
+        const activePage = localStorage.getItem(`koko_active_page_id_${currentClientId}`);
+        const activePageName = localStorage.getItem(`koko_active_page_name_${currentClientId}`);
 
-        const directTtToken = localStorage.getItem(`koko_active_tt_token_${selectedClientId}`);
-        const directTtAcct = localStorage.getItem(`koko_active_tt_account_${selectedClientId}`);
-        const directTtUser = localStorage.getItem(`koko_active_tt_username_${selectedClientId}`);
+        const directTtToken = localStorage.getItem(`koko_active_tt_token_${currentClientId}`);
+        const directTtAcct = localStorage.getItem(`koko_active_tt_account_${currentClientId}`);
+        const directTtUser = localStorage.getItem(`koko_active_tt_username_${currentClientId}`);
 
-        // Fallback to 1-year persistent cookies if direct values not found in localStorage
-        const ttCookieMatch = typeof document !== 'undefined' ? document.cookie.match(/koko_session_tt_account=([^;]+)/) : null;
+        // Fallback to client-scoped persistent cookies ONLY
+        const ttCookieMatch = typeof document !== 'undefined'
+          ? document.cookie.match(new RegExp(`koko_session_tt_account_${currentClientId}=([^;]+)`))
+          : null;
         const ttCookieAcct = ttCookieMatch ? decodeURIComponent(ttCookieMatch[1].trim()) : null;
 
-        const igCookieMatch = typeof document !== 'undefined' ? document.cookie.match(/koko_session_ig_account=([^;]+)/) : null;
+        const igCookieMatch = typeof document !== 'undefined'
+          ? document.cookie.match(new RegExp(`koko_session_ig_account_${currentClientId}=([^;]+)`))
+          : null;
         const igCookieAcct = igCookieMatch ? decodeURIComponent(igCookieMatch[1].trim()) : null;
 
         setActivePageId(activePage || '');
 
         // Load cached Meta pages if available
         try {
-          const storedPages = localStorage.getItem(`koko_meta_available_pages_${selectedClientId}`);
+          const storedPages = localStorage.getItem(`koko_meta_available_pages_${currentClientId}`);
           if (storedPages) {
             const parsedPages = JSON.parse(storedPages);
             if (Array.isArray(parsedPages)) {
@@ -181,46 +195,56 @@ export default function DashboardPage() {
             }
           } else if (ig || directIg) {
             // Lazy fetch from API in background
-            axios.get(`/api/social-accounts/meta-pages?clientId=${selectedClientId}`).then((res) => {
+            axios.get(`/api/social-accounts/meta-pages?clientId=${currentClientId}`).then((res) => {
+              if (currentClientId !== selectedClientId) return;
               if (res.data?.success && Array.isArray(res.data?.pages)) {
                 setAvailablePages(res.data.pages);
-                localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+                localStorage.setItem(`koko_meta_available_pages_${currentClientId}`, JSON.stringify(res.data.pages));
               }
             }).catch(() => {});
           }
         } catch (e) {}
 
-        const ttHandleDisplay = directTtUser
-          ? (directTtUser.startsWith('@') ? directTtUser : `@${directTtUser}`)
-          : (tt?.platformAccountId || directTtAcct || ttCookieAcct || undefined);
+        const hasInstagram = Boolean(ig || directIg || directAcct || directUser || igCookieAcct);
+        const hasTikTok = Boolean(tt || directTtToken || directTtAcct || directTtUser || ttCookieAcct);
 
-        const igHandleDisplay = directUser
-          ? (directUser.startsWith('@') ? directUser : `@${directUser}`)
-          : (ig?.platformAccountId || directAcct || igCookieAcct || undefined);
+        const ttHandleDisplay = hasTikTok
+          ? (directTtUser
+              ? (directTtUser.startsWith('@') ? directTtUser : `@${directTtUser}`)
+              : (tt?.platformAccountId || directTtAcct || ttCookieAcct || undefined))
+          : undefined;
+
+        const igHandleDisplay = hasInstagram
+          ? (directUser
+              ? (directUser.startsWith('@') ? directUser : `@${directUser}`)
+              : (ig?.platformAccountId || directAcct || igCookieAcct || undefined))
+          : undefined;
 
         setConnectedPlatforms({
-          instagram: !!ig || !!directIg || !!igCookieAcct,
-          tiktok: !!tt || !!directTtToken || !!directTtAcct || !!ttCookieAcct,
+          instagram: hasInstagram,
+          tiktok: hasTikTok,
           instagramHandle: igHandleDisplay,
           tiktokHandle: ttHandleDisplay,
-          pageName: activePageName || (ig?.pageName || undefined),
+          pageName: hasInstagram ? (activePageName || ig?.pageName || undefined) : undefined,
         });
 
         // Fetch real TikTok profile posts for the connected handle
-        if (ttHandleDisplay) {
+        if (hasTikTok && ttHandleDisplay) {
           const cleanTtUser = ttHandleDisplay.replace(/^@/, '').trim();
           if (cleanTtUser) {
             axios
               .get(`/api/tiktok/posts?username=${cleanTtUser}`)
               .then((res) => {
+                if (currentClientId !== selectedClientId) return;
                 if (res.data?.success && Array.isArray(res.data?.posts) && res.data.posts.length > 0) {
-                  const realTtPosts = res.data.posts;
+                  const realTtPosts = res.data.posts.map((p: any) => ({ ...p, clientId: currentClientId }));
                   const realFollowers = res.data.followerCount;
                   const totalTtViews = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.viewsCount) || 0), 0);
                   const totalTtEng = realTtPosts.reduce((sum: number, p: any) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
                   const realTtEngRate = totalTtViews > 0 ? Number(((totalTtEng / totalTtViews) * 100).toFixed(1)) : 0;
 
                   setReport((prev) => {
+                    if (prev.clientId && prev.clientId !== currentClientId) return prev;
                     const currentPosts = prev.posts || [];
                     // Keep Instagram and non-TikTok posts, replace all TikTok posts with fresh live data
                     const nonTtPosts = currentPosts.filter(
@@ -229,14 +253,15 @@ export default function DashboardPage() {
                     const merged = [...realTtPosts, ...nonTtPosts];
                     const updatedReport = {
                       ...prev,
+                      clientId: currentClientId,
                       posts: merged,
                       ...(realFollowers ? { ttFollowersGrowth: realFollowers } : {}),
                       ...(totalTtViews > 0 ? { ttViews: totalTtViews } : {}),
                       ...(realTtEngRate > 0 ? { ttEngagementRate: realTtEngRate } : {}),
                     };
                     try {
-                      localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(updatedReport));
-                      localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(merged));
+                      localStorage.setItem(`koko_report_${currentClientId}`, JSON.stringify(updatedReport));
+                      localStorage.setItem(`koko_posts_${currentClientId}`, JSON.stringify(merged));
                     } catch (e) {}
                     return updatedReport;
                   });
@@ -342,13 +367,14 @@ export default function DashboardPage() {
         return;
       }
 
+      const targetClientId = selectedClientId;
       setIsLoading(true);
       try {
         // Read cached report from localStorage first for instant load
         let cachedReport: any = null;
         let cachedPosts: any[] = [];
         try {
-          const storedPostsStr = localStorage.getItem(`koko_posts_${selectedClientId}`);
+          const storedPostsStr = localStorage.getItem(`koko_posts_${targetClientId}`);
           if (storedPostsStr) {
             const parsedPosts = JSON.parse(storedPostsStr);
             if (Array.isArray(parsedPosts) && parsedPosts.length > 0) {
@@ -356,20 +382,24 @@ export default function DashboardPage() {
             }
           }
 
-          const cached = localStorage.getItem(`koko_report_${selectedClientId}`);
+          const cached = localStorage.getItem(`koko_report_${targetClientId}`);
           if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed && (parsed.id || parsed.igViews != null)) {
               if (cachedPosts.length > 0 && (!parsed.posts || parsed.posts.length === 0)) {
                 parsed.posts = cachedPosts;
               }
-              cachedReport = parsed;
-              setReport(parsed);
+              cachedReport = { ...parsed, clientId: targetClientId };
+              if (targetClientId === selectedClientId) {
+                setReport(cachedReport);
+              }
             }
           }
         } catch (e) {}
 
-        const res = await axios.get(`/api/reports?clientId=${selectedClientId}&startDate=${startDate}&endDate=${endDate}`);
+        const res = await axios.get(`/api/reports?clientId=${targetClientId}&startDate=${startDate}&endDate=${endDate}`);
+        if (targetClientId !== selectedClientId) return;
+
         const reportData = Array.isArray(res.data) ? res.data[0] : res.data;
 
         // ONLY replace state from server if server returned real data with posts or views > 0
@@ -387,16 +417,21 @@ export default function DashboardPage() {
           const finalReport = {
             ...cachedReport,
             ...reportData,
+            clientId: targetClientId,
             posts: mergedPosts.length > 0 ? mergedPosts : existingPosts,
           };
-          setReport(finalReport);
+          if (targetClientId === selectedClientId) {
+            setReport(finalReport);
+          }
           try {
-            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(finalReport));
-            localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(finalReport.posts));
+            localStorage.setItem(`koko_report_${targetClientId}`, JSON.stringify(finalReport));
+            localStorage.setItem(`koko_posts_${targetClientId}`, JSON.stringify(finalReport.posts));
           } catch (e) {}
         } else if (!cachedReport) {
-          const empty = createEmptyReport(selectedClientId);
-          setReport(empty);
+          const empty = createEmptyReport(targetClientId);
+          if (targetClientId === selectedClientId) {
+            setReport(empty);
+          }
         }
       } catch (err) {
         console.warn('API fetch report notice:', err);
@@ -437,39 +472,52 @@ export default function DashboardPage() {
     const basePosts: ContentPostData[] = Array.isArray(base.posts) ? base.posts : [];
 
     const hasTikTokConnected = Boolean(
-      connectedPlatforms.tiktok ||
-      connectedPlatforms.tiktokHandle ||
-      Number(base.ttViews || 0) > 0
+      connectedPlatforms.tiktok && connectedPlatforms.tiktokHandle
     );
 
-    const hasRealTtPosts = basePosts.some(
-      (p) =>
-        (p.platform || '').toLowerCase() === 'tiktok' &&
-        !p.thumbnailUrl?.includes('unsplash') &&
-        !String(p.id || '').includes('_1') &&
-        !String(p.id || '').includes('_2')
+    const hasInstagramConnected = Boolean(
+      connectedPlatforms.instagram && (connectedPlatforms.instagramHandle || connectedPlatforms.pageName)
     );
 
     let allPosts = [...basePosts];
-    if (hasRealTtPosts) {
-      allPosts = allPosts.filter(
+
+    if (!hasTikTokConnected) {
+      allPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() !== 'tiktok');
+    } else {
+      const hasRealTtPosts = allPosts.some(
         (p) =>
-          String(p.platform || '').toLowerCase() !== 'tiktok' ||
-          (!p.thumbnailUrl?.includes('unsplash') &&
-           !String(p.id || '').includes('_1') &&
-           !String(p.id || '').includes('_2'))
+          (p.platform || '').toLowerCase() === 'tiktok' &&
+          !p.thumbnailUrl?.includes('unsplash') &&
+          !String(p.id || '').includes('_1') &&
+          !String(p.id || '').includes('_2')
       );
-    } else if (hasTikTokConnected && basePosts.filter((p) => p.platform === 'tiktok').length === 0) {
-      const handle = connectedPlatforms.tiktokHandle || 'kasumba95';
-      const baseTtViews = Number(base.ttViews || 0) > 0 ? Number(base.ttViews) : Math.round(312000 * periodScale);
-      const generatedTtPosts = generateTikTokPortfolio(handle, sDate, eDate, baseTtViews);
-      allPosts = [...allPosts, ...generatedTtPosts];
+
+      if (hasRealTtPosts) {
+        allPosts = allPosts.filter(
+          (p) =>
+            String(p.platform || '').toLowerCase() !== 'tiktok' ||
+            (!p.thumbnailUrl?.includes('unsplash') &&
+             !String(p.id || '').includes('_1') &&
+             !String(p.id || '').includes('_2'))
+        );
+      } else if (allPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok').length === 0) {
+        const handle = connectedPlatforms.tiktokHandle || '';
+        if (handle) {
+          const baseTtViews = Number(base.ttViews || 0) > 0 ? Number(base.ttViews) : Math.round(312000 * periodScale);
+          const generatedTtPosts = generateTikTokPortfolio(handle, sDate, eDate, baseTtViews);
+          allPosts = [...allPosts, ...generatedTtPosts];
+        }
+      }
+    }
+
+    if (!hasInstagramConnected) {
+      allPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() !== 'instagram');
     }
 
     // Ensure Instagram accounts have active Stories cadence represented in analytics
-    const hasIgPosts = allPosts.some((p) => (p.platform || '').toLowerCase() === 'instagram');
+    const hasIgPosts = hasInstagramConnected && allPosts.some((p) => (p.platform || '').toLowerCase() === 'instagram');
     const igStories = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram' && p.contentFormat === 'Stories');
-    if (hasIgPosts && igStories.length === 0) {
+    if (hasInstagramConnected && hasIgPosts && igStories.length === 0) {
       const igFeed = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram' && p.contentFormat !== 'Stories');
       const avgViews = Math.round(igFeed.reduce((acc, p) => acc + (Number(p.viewsCount) || 0), 0) / (igFeed.length || 1)) || 1100;
       const targetStoryCount = Math.min(15, Math.max(7, Math.round(daysDiff * 0.38)));
@@ -523,9 +571,9 @@ export default function DashboardPage() {
     }
 
     // Ensure TikTok accounts have active Stories cadence represented in analytics
-    const hasTtPosts = allPosts.some((p) => (p.platform || '').toLowerCase() === 'tiktok');
+    const hasTtPosts = hasTikTokConnected && allPosts.some((p) => (p.platform || '').toLowerCase() === 'tiktok');
     const ttStories = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok' && p.contentFormat === 'Stories');
-    if (hasTtPosts && ttStories.length === 0) {
+    if (hasTikTokConnected && hasTtPosts && ttStories.length === 0) {
       const ttFeed = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok');
       const refPost = ttFeed[0];
       const storyViews = Math.max(140, Math.round((Number(refPost?.viewsCount) || 500) * 0.32));
@@ -583,28 +631,35 @@ export default function DashboardPage() {
     const igPostsViews = igPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
     const igPriorPostsViews = igPriorPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
 
-    let computedIgViews = Number(base.igViews || 0);
-    if (igPostsViews > 0) {
-      computedIgViews = igPostsViews;
-    } else if (computedIgViews > 0) {
-      computedIgViews = Math.round(computedIgViews * periodScale);
-    }
+    let computedIgViews = 0;
+    let computedIgFollowers = 0;
+    let computedIgEngagementRate = 0;
+    let computedIgPctChange = 0;
 
-    let computedIgFollowers = Number(base.igFollowersGrowth || 0);
-    if (computedIgFollowers > 0) {
-      computedIgFollowers = Math.max(1, Math.round(computedIgFollowers * periodScale));
-    }
+    if (hasInstagramConnected) {
+      computedIgViews = Number(base.igViews || 0);
+      if (igPostsViews > 0) {
+        computedIgViews = igPostsViews;
+      } else if (computedIgViews > 0) {
+        computedIgViews = Math.round(computedIgViews * periodScale);
+      }
 
-    let computedIgEngagementRate = base.igEngagementRate || 0;
-    if (igPosts.length > 0) {
-      const igEngagements = igPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
-      const denominator = computedIgViews > 0 ? computedIgViews : (igPostsViews || 1);
-      computedIgEngagementRate = Number(((igEngagements / denominator) * 100).toFixed(1));
-    }
+      computedIgFollowers = Number(base.igFollowersGrowth || 0);
+      if (computedIgFollowers > 0) {
+        computedIgFollowers = Math.max(1, Math.round(computedIgFollowers * periodScale));
+      }
 
-    let computedIgPctChange = base.igViewsPctChange || 0;
-    if (igPriorPostsViews > 0 && igPostsViews > 0) {
-      computedIgPctChange = calculatePctChange(igPostsViews, igPriorPostsViews);
+      computedIgEngagementRate = base.igEngagementRate || 0;
+      if (igPosts.length > 0) {
+        const igEngagements = igPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+        const denominator = computedIgViews > 0 ? computedIgViews : (igPostsViews || 1);
+        computedIgEngagementRate = Number(((igEngagements / denominator) * 100).toFixed(1));
+      }
+
+      computedIgPctChange = base.igViewsPctChange || 0;
+      if (igPriorPostsViews > 0 && igPostsViews > 0) {
+        computedIgPctChange = calculatePctChange(igPostsViews, igPriorPostsViews);
+      }
     }
 
     // 2. TikTok metrics
@@ -614,44 +669,51 @@ export default function DashboardPage() {
     const ttPostsViews = ttPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
     const ttPriorPostsViews = ttPriorPosts.reduce((sum, p) => sum + (Number(p.viewsCount) || 0), 0);
 
-    let computedTtViews = Number(base.ttViews || 0);
-    if (ttPostsViews > 0) {
-      computedTtViews = ttPostsViews;
-    } else if (computedTtViews > 0) {
-      computedTtViews = Math.round(computedTtViews * periodScale);
-    }
+    let computedTtViews = 0;
+    let computedTtFollowers = 0;
+    let computedTtEngagementRate = 0;
+    let computedTtPctChange = 0;
 
-    let computedTtFollowers = Number(base.ttFollowersGrowth || 0);
-    if (computedTtFollowers > 0) {
-      computedTtFollowers = Math.max(1, Math.round(computedTtFollowers * periodScale));
-    }
+    if (hasTikTokConnected) {
+      computedTtViews = Number(base.ttViews || 0);
+      if (ttPostsViews > 0) {
+        computedTtViews = ttPostsViews;
+      } else if (computedTtViews > 0) {
+        computedTtViews = Math.round(computedTtViews * periodScale);
+      }
 
-    let computedTtEngagementRate = base.ttEngagementRate || 0;
-    if (ttPosts.length > 0) {
-      const ttEngagements = ttPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
-      const denominator = computedTtViews > 0 ? computedTtViews : (ttPostsViews || 1);
-      computedTtEngagementRate = Number(((ttEngagements / denominator) * 100).toFixed(1));
-    }
+      computedTtFollowers = Number(base.ttFollowersGrowth || 0);
+      if (computedTtFollowers > 0) {
+        computedTtFollowers = Math.max(1, Math.round(computedTtFollowers * periodScale));
+      }
 
-    let computedTtPctChange = base.ttViewsPctChange || 0;
-    if (ttPriorPostsViews > 0 && ttPostsViews > 0) {
-      computedTtPctChange = calculatePctChange(ttPostsViews, ttPriorPostsViews);
+      computedTtEngagementRate = base.ttEngagementRate || 0;
+      if (ttPosts.length > 0) {
+        const ttEngagements = ttPosts.reduce((sum, p) => sum + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
+        const denominator = computedTtViews > 0 ? computedTtViews : (ttPostsViews || 1);
+        computedTtEngagementRate = Number(((ttEngagements / denominator) * 100).toFixed(1));
+      }
+
+      computedTtPctChange = base.ttViewsPctChange || 0;
+      if (ttPriorPostsViews > 0 && ttPostsViews > 0) {
+        computedTtPctChange = calculatePctChange(ttPostsViews, ttPriorPostsViews);
+      }
     }
 
     // Content Display Rule:
-    // Ensure both platforms have their creative content displayed.
-    // If a platform has posts within the date range, use them; if not, fall back to allPosts for that platform.
+    // Only display content for platforms that are actually connected.
     const currentIgPosts = currentPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram');
     const currentTtPosts = currentPeriodPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok');
     const allIgPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram');
     const allTtPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok');
 
-    const effectiveIgPosts = currentIgPosts.length > 0 ? currentIgPosts : allIgPosts;
-    const effectiveTtPosts = currentTtPosts.length > 0 ? currentTtPosts : allTtPosts;
+    const effectiveIgPosts = hasInstagramConnected ? (currentIgPosts.length > 0 ? currentIgPosts : allIgPosts) : [];
+    const effectiveTtPosts = hasTikTokConnected ? (currentTtPosts.length > 0 ? currentTtPosts : allTtPosts) : [];
     const displayPosts = [...effectiveIgPosts, ...effectiveTtPosts];
 
     return {
       ...base,
+      clientId: selectedClientId,
       startDate: sDate,
       endDate: eDate,
       posts: displayPosts,
@@ -672,6 +734,7 @@ export default function DashboardPage() {
   // Handle dynamic social media API sync
   const handleLiveSync = async (targetPageOverride?: string | unknown) => {
     if (!selectedClientId) return;
+    const targetSyncClientId = selectedClientId;
     setIsSyncing(true);
     try {
       let igToken = '';
@@ -684,13 +747,13 @@ export default function DashboardPage() {
         const stored = localStorage.getItem('koko_connected_social_accounts');
         if (stored) {
           const accounts: any[] = JSON.parse(stored);
-          const ig = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+          const ig = accounts.find((a) => a.clientId === targetSyncClientId && a.platform === 'instagram');
           if (ig) {
             igToken = ig.accessToken;
             igAccountId = ig.platformAccountId;
             if (!pageId && ig.pageId) pageId = ig.pageId;
           }
-          const tt = accounts.find((a) => a.clientId === selectedClientId && a.platform === 'tiktok');
+          const tt = accounts.find((a) => a.clientId === targetSyncClientId && a.platform === 'tiktok');
           if (tt) {
             ttToken = tt.accessToken;
             ttAccountId = tt.platformAccountId;
@@ -700,27 +763,27 @@ export default function DashboardPage() {
 
       if (!igToken) {
         try {
-          igToken = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
-          igAccountId = localStorage.getItem(`koko_active_ig_account_${selectedClientId}`) || '';
+          igToken = localStorage.getItem(`koko_active_ig_token_${targetSyncClientId}`) || '';
+          igAccountId = localStorage.getItem(`koko_active_ig_account_${targetSyncClientId}`) || '';
           if (!pageId) {
-            pageId = localStorage.getItem(`koko_active_page_id_${selectedClientId}`) || '';
+            pageId = localStorage.getItem(`koko_active_page_id_${targetSyncClientId}`) || '';
           }
         } catch (e) {}
       }
 
-      if (!ttAccountId) {
+      if (!ttAccountId && connectedPlatforms.tiktok) {
         try {
-          ttAccountId = localStorage.getItem(`koko_active_tt_account_${selectedClientId}`) ||
-                        localStorage.getItem(`koko_active_tt_username_${selectedClientId}`) ||
+          ttAccountId = localStorage.getItem(`koko_active_tt_account_${targetSyncClientId}`) ||
+                        localStorage.getItem(`koko_active_tt_username_${targetSyncClientId}`) ||
                         connectedPlatforms.tiktokHandle || '';
           if (!ttToken) {
-            ttToken = localStorage.getItem(`koko_active_tt_token_${selectedClientId}`) || (ttAccountId ? 'tt_direct_token' : '');
+            ttToken = localStorage.getItem(`koko_active_tt_token_${targetSyncClientId}`) || (ttAccountId ? 'tt_direct_token' : '');
           }
         } catch (e) {}
       }
 
       const res = await axios.post('/api/sync', {
-        clientId: selectedClientId,
+        clientId: targetSyncClientId,
         startDate,
         endDate,
         accessToken: igToken,
@@ -731,9 +794,12 @@ export default function DashboardPage() {
         existingPosts: report?.posts || [],
       });
 
+      if (targetSyncClientId !== selectedClientId) return;
+
       const updatedReport = res.data?.report || (res.data?.id ? res.data : null);
       if (updatedReport) {
         setReport((prev) => {
+          if (prev.clientId && prev.clientId !== targetSyncClientId) return prev;
           const existingPosts = prev.posts || [];
           const newPosts = updatedReport.posts || [];
           const newPostIds = new Set(newPosts.map((p: any) => p.postId || p.id));
@@ -743,11 +809,12 @@ export default function DashboardPage() {
           const mergedReport = {
             ...prev,
             ...updatedReport,
+            clientId: targetSyncClientId,
             posts: finalPosts,
           };
           try {
-            localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(mergedReport));
-            localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(finalPosts));
+            localStorage.setItem(`koko_report_${targetSyncClientId}`, JSON.stringify(mergedReport));
+            localStorage.setItem(`koko_posts_${targetSyncClientId}`, JSON.stringify(finalPosts));
           } catch (e) {}
           return mergedReport;
         });

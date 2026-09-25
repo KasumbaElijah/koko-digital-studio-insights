@@ -252,12 +252,15 @@ export async function GET(request: Request) {
             <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">5</strong> seconds...</p>
           </div>
           <script>
-            // 0. Set persistent cookies (1 year duration)
+            // 0. Set persistent cookies (1 year duration) scoped strictly to client
             var cookieAge = 31536000;
             document.cookie = "koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
-            document.cookie = "koko_session_ig_connected=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
-            document.cookie = "koko_session_ig_account=${encodeURIComponent(igUsername ? '@' + igUsername : igAccountId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_connected_${encodeURIComponent(clientId)}=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_account_${encodeURIComponent(clientId)}=${encodeURIComponent(igUsername ? '@' + igUsername : igAccountId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
             document.cookie = "koko_active_ig_token_${encodeURIComponent(clientId)}=${encodeURIComponent(accessToken)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            // Invalidate legacy unscoped global cookies so they never bleed into other accounts
+            document.cookie = "koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+            document.cookie = "koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
             // 1. Save directly to domain localStorage
             try {

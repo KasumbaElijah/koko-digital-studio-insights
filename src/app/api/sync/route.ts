@@ -38,6 +38,10 @@ export async function POST(request: Request) {
       console.warn('Body parse warning on static export:', e);
     }
 
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
+    }
+
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
 
@@ -53,7 +57,7 @@ export async function POST(request: Request) {
     if (!socialAccounts || socialAccounts.length === 0) {
       try {
         const { getServerSocialAccounts } = await import('@/lib/serverStore');
-        socialAccounts = getServerSocialAccounts(clientId || undefined);
+        socialAccounts = getServerSocialAccounts(clientId);
       } catch {}
     }
 
@@ -61,15 +65,19 @@ export async function POST(request: Request) {
     const ttAccount = socialAccounts.find((a) => a.platform === 'tiktok');
 
     const igToken = igAccount?.accessToken || bodyAccessToken;
-    const igPlatformAccountId = igAccount?.platformAccountId || bodyPlatformAccountId || '17841413203113073';
+    const igPlatformAccountId = igAccount?.platformAccountId || bodyPlatformAccountId || '';
 
     const ttToken = ttAccount?.accessToken || bodyTiktokAccessToken;
-    const ttPlatformAccountId = ttAccount?.platformAccountId || bodyTiktokPlatformAccountId;
+    const ttPlatformAccountId = ttAccount?.platformAccountId || bodyTiktokPlatformAccountId || '';
+
+    const isInstagramConnected = Boolean(igToken && (igPlatformAccountId || pageId));
+    const effectiveTtHandle = ttPlatformAccountId || (ttAccount?.platformAccountId) || '';
+    const isTikTokConnected = Boolean(effectiveTtHandle || ttToken);
 
     let igMetrics = null;
     let ttMetrics = null;
 
-    if (igToken) {
+    if (isInstagramConnected) {
       try {
         igMetrics = await fetchInstagramMetrics(
           igPlatformAccountId,
@@ -83,11 +91,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const effectiveTtHandle = ttPlatformAccountId || (ttAccount?.platformAccountId) || (ttToken ? 'kasumba95' : '');
-    if (effectiveTtHandle || ttToken) {
+    if (isTikTokConnected && effectiveTtHandle) {
       try {
         ttMetrics = await fetchTikTokMetrics(
-          effectiveTtHandle || 'kasumba95',
+          effectiveTtHandle,
           ttToken || 'tt_direct_token',
           startDate,
           endDate
@@ -170,49 +177,63 @@ export async function POST(request: Request) {
     const preservedOldPosts = existingPostsFromClient.filter(
       (p) =>
         !incomingIds.has(p.postId || p.id) &&
+        (!p.clientId || p.clientId === clientId) &&
+        (isInstagramConnected || (p.platform || '').toLowerCase() !== 'instagram') &&
+        (isTikTokConnected || (p.platform || '').toLowerCase() !== 'tiktok') &&
         !(p.platform === 'tiktok' && (p.thumbnailUrl?.includes('unsplash') || String(p.id).includes('_1') || String(p.id).includes('_2')))
     );
     const posts = incomingPosts.length > 0
       ? [...incomingPosts, ...preservedOldPosts]
-      : existingPostsFromClient;
+      : (existingPostsFromClient.filter((p) => (!p.clientId || p.clientId === clientId) && (isInstagramConnected || p.platform !== 'instagram') && (isTikTokConnected || p.platform !== 'tiktok')));
 
     const sDateObj = new Date(startDateStr);
     const eDateObj = new Date(endDateStr);
     const daysDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     const dateScale = daysDiff / 30;
 
-    const igFollowers = igMetrics?.followersGrowth != null
-      ? igMetrics.followersGrowth
-      : Math.max(1, Math.round(1240 * dateScale));
+    const igFollowers = isInstagramConnected
+      ? (igMetrics?.followersGrowth != null ? igMetrics.followersGrowth : Math.max(1, Math.round(1240 * dateScale)))
+      : 0;
 
-    const igViews = igMetrics?.totalViews != null && igMetrics.totalViews > 0
-      ? igMetrics.totalViews
-      : Math.round(167000 * dateScale);
+    const igViews = isInstagramConnected
+      ? (igMetrics?.totalViews != null && igMetrics.totalViews > 0 ? igMetrics.totalViews : Math.round(167000 * dateScale))
+      : 0;
 
-    const isTikTokConnected = !!ttPlatformAccountId;
     const ttPostsSumViews = ttPosts.reduce((acc, p) => acc + (Number(p.viewsCount) || 0), 0);
     const ttPostsSumEng = ttPosts.reduce((acc, p) => acc + (Number(p.likesCount) || 0) + (Number(p.commentsCount) || 0) + (Number(p.sharesCount) || 0), 0);
     const ttRealEngRate = ttPostsSumViews > 0 ? parseFloat(((ttPostsSumEng / ttPostsSumViews) * 100).toFixed(1)) : 0;
 
-    const ttFollowers = ttMetrics?.followersGrowth != null && ttMetrics.followersGrowth > 0
-      ? ttMetrics.followersGrowth
-      : (isTikTokConnected ? (ttPostsSumViews > 0 ? Math.round(ttPostsSumViews * 0.15) : Math.max(1, Math.round(2840 * dateScale))) : 0);
+    const ttFollowers = isTikTokConnected
+      ? (ttMetrics?.followersGrowth != null && ttMetrics.followersGrowth > 0
+          ? ttMetrics.followersGrowth
+          : (ttPostsSumViews > 0 ? Math.round(ttPostsSumViews * 0.15) : Math.max(1, Math.round(2840 * dateScale))))
+      : 0;
 
-    const ttViews = ttMetrics?.totalViews != null && ttMetrics.totalViews > 0
-      ? ttMetrics.totalViews
-      : (ttPostsSumViews > 0 ? ttPostsSumViews : (isTikTokConnected ? Math.round(312000 * dateScale) : 0));
+    const ttViews = isTikTokConnected
+      ? (ttMetrics?.totalViews != null && ttMetrics.totalViews > 0
+          ? ttMetrics.totalViews
+          : (ttPostsSumViews > 0 ? ttPostsSumViews : Math.round(312000 * dateScale)))
+      : 0;
 
-    const ttEngagement = ttMetrics?.engagementRate != null && ttMetrics.engagementRate > 0
-      ? ttMetrics.engagementRate
-      : (ttRealEngRate > 0 ? ttRealEngRate : (isTikTokConnected ? 5.8 : 0));
+    const ttEngagement = isTikTokConnected
+      ? (ttMetrics?.engagementRate != null && ttMetrics.engagementRate > 0
+          ? ttMetrics.engagementRate
+          : (ttRealEngRate > 0 ? ttRealEngRate : 5.8))
+      : 0;
 
-    const insightsList = [
-      `Live Instagram analytics synced for ${igPlatformAccountId}. Video reels are driving 65%+ of aggregate audience views over this ${daysDiff}-day window.`,
-    ];
+    const insightsList: string[] = [];
+    if (isInstagramConnected) {
+      insightsList.push(
+        `Live Instagram analytics synced for ${igPlatformAccountId || 'connected account'}. Video reels are driving 65%+ of aggregate audience views over this ${daysDiff}-day window.`
+      );
+    }
     if (isTikTokConnected) {
       insightsList.push(
-        `Live TikTok analytics active for ${ttPlatformAccountId}. Short-form video distribution pacing at ${ttEngagement}% average engagement rate.`
+        `Live TikTok analytics active for ${effectiveTtHandle || 'connected account'}. Short-form video distribution pacing at ${ttEngagement}% average engagement rate.`
       );
+    }
+    if (insightsList.length === 0) {
+      insightsList.push('Connect social media channels in Settings to generate automatic live performance insights.');
     }
 
     const updatedReport = {
@@ -231,8 +252,8 @@ export async function POST(request: Request) {
       ],
       igFollowersGrowth: igFollowers,
       igViews: igViews,
-      igViewsPctChange: 18.2,
-      igEngagementRate: igMetrics?.engagementRate ?? 4.5,
+      igViewsPctChange: isInstagramConnected ? 18.2 : 0,
+      igEngagementRate: isInstagramConnected ? (igMetrics?.engagementRate ?? 4.5) : 0,
       ttFollowersGrowth: ttFollowers,
       ttViews: ttViews,
       ttViewsPctChange: isTikTokConnected ? 24.5 : 0,

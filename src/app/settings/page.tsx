@@ -311,6 +311,13 @@ export default function SettingsPage() {
               localStorage.setItem(`koko_active_ig_username_${targetClientId}`, username);
             }
           }
+          if (token && connected === 'tiktok') {
+            localStorage.setItem(`koko_active_tt_token_${targetClientId}`, token);
+            localStorage.setItem(`koko_active_tt_account_${targetClientId}`, displayAccountId);
+            if (username) {
+              localStorage.setItem(`koko_active_tt_username_${targetClientId}`, username);
+            }
+          }
         } catch (e) {
           console.warn('LocalStorage save error:', e);
         }
@@ -345,6 +352,11 @@ export default function SettingsPage() {
         localStorage.removeItem(`koko_meta_available_pages_${selectedClientId}`);
         localStorage.removeItem(`koko_active_page_id_${selectedClientId}`);
         localStorage.removeItem(`koko_active_page_name_${selectedClientId}`);
+        document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         setAvailablePages([]);
         setActivePageId('');
       }
@@ -352,7 +364,37 @@ export default function SettingsPage() {
         localStorage.removeItem(`koko_active_tt_token_${selectedClientId}`);
         localStorage.removeItem(`koko_active_tt_account_${selectedClientId}`);
         localStorage.removeItem(`koko_active_tt_username_${selectedClientId}`);
+        document.cookie = `koko_session_tt_connected_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_tt_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_active_tt_token_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_tt_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `koko_session_tt_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       }
+
+      // Filter out posts from disconnected platform from cached report
+      try {
+        const cachedReportStr = localStorage.getItem(`koko_report_${selectedClientId}`);
+        if (cachedReportStr) {
+          const parsedReport = JSON.parse(cachedReportStr);
+          if (Array.isArray(parsedReport.posts)) {
+            parsedReport.posts = parsedReport.posts.filter((p: any) => String(p.platform || '').toLowerCase() !== platform.toLowerCase());
+          }
+          if (platform === 'tiktok') {
+            parsedReport.ttViews = 0;
+            parsedReport.ttFollowersGrowth = 0;
+            parsedReport.ttEngagementRate = 0;
+            parsedReport.ttViewsPctChange = 0;
+          }
+          if (platform === 'instagram') {
+            parsedReport.igViews = 0;
+            parsedReport.igFollowersGrowth = 0;
+            parsedReport.igEngagementRate = 0;
+            parsedReport.igViewsPctChange = 0;
+          }
+          localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(parsedReport));
+          localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(parsedReport.posts || []));
+        }
+      } catch (e) {}
     } catch (e) {}
 
     setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
@@ -596,9 +638,22 @@ export default function SettingsPage() {
     // 4. Remove associated social accounts and cached report
     try {
       localStorage.removeItem(`koko_report_${clientId}`);
+      localStorage.removeItem(`koko_posts_${clientId}`);
       localStorage.removeItem(`koko_active_ig_token_${clientId}`);
       localStorage.removeItem(`koko_active_ig_account_${clientId}`);
       localStorage.removeItem(`koko_active_ig_username_${clientId}`);
+      localStorage.removeItem(`koko_active_tt_token_${clientId}`);
+      localStorage.removeItem(`koko_active_tt_account_${clientId}`);
+      localStorage.removeItem(`koko_active_tt_username_${clientId}`);
+      localStorage.removeItem(`koko_meta_available_pages_${clientId}`);
+      localStorage.removeItem(`koko_active_page_id_${clientId}`);
+      localStorage.removeItem(`koko_active_page_name_${clientId}`);
+      document.cookie = `koko_session_ig_connected_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_session_ig_account_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_active_ig_token_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_session_tt_connected_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_session_tt_account_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_active_tt_token_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       const storedAccounts = localStorage.getItem('koko_connected_social_accounts');
       if (storedAccounts) {
         const accounts: SocialAccountData[] = JSON.parse(storedAccounts);
@@ -666,12 +721,15 @@ export default function SettingsPage() {
       localStorage.setItem(`koko_active_tt_account_${selectedClientId}`, displayHandle);
       localStorage.setItem(`koko_active_tt_username_${selectedClientId}`, cleanUsername);
 
-      // Persistent cookies (1-year duration)
+      // Persistent cookies (1-year duration) scoped strictly to selectedClientId
       const cookieAge = 31536000;
       document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_tt_connected=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_tt_account=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_tt_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_tt_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
       document.cookie = `koko_active_tt_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      // Invalidate legacy unscoped global cookies
+      document.cookie = `koko_session_tt_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_session_tt_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
     } catch (e) {
       console.warn('LocalStorage save error on direct TikTok connect:', e);
     }
@@ -733,12 +791,15 @@ export default function SettingsPage() {
       localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, displayHandle);
       localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, cleanUsername);
 
-      // Persistent cookies (1-year duration)
+      // Persistent cookies (1-year duration) scoped strictly to selectedClientId
       const cookieAge = 31536000;
       document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_ig_connected=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_ig_account=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
       document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      // Invalidate legacy unscoped global cookies
+      document.cookie = `koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
     } catch (e) {
       console.warn('LocalStorage save error on direct Instagram connect:', e);
     }

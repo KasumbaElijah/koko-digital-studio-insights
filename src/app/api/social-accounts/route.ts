@@ -16,10 +16,13 @@ export async function GET(request: Request) {
     console.warn('URL parse warning on static export:', e);
   }
 
+  if (!clientId) {
+    return NextResponse.json([]);
+  }
+
   try {
-    const whereClause = clientId ? { clientId } : {};
     const accounts = await prisma.socialAccount.findMany({
-      where: whereClause,
+      where: { clientId },
       include: { client: true },
       orderBy: { updatedAt: 'desc' },
     });
@@ -41,11 +44,11 @@ export async function GET(request: Request) {
     }
 
     // Check server persistent store
-    const fallbackAccounts = getServerSocialAccounts(clientId || undefined);
+    const fallbackAccounts = getServerSocialAccounts(clientId);
     return NextResponse.json(fallbackAccounts);
   } catch (error) {
     // Prisma offline: load from server file store
-    const fallbackAccounts = getServerSocialAccounts(clientId || undefined);
+    const fallbackAccounts = getServerSocialAccounts(clientId);
     return NextResponse.json(fallbackAccounts);
   }
 }

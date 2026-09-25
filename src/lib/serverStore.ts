@@ -79,7 +79,7 @@ export function deleteServerClient(id: string): void {
 export function getServerSocialAccounts(clientId?: string): SocialAccountData[] {
   const store = ensureStoreExists();
   const list = store.socialAccounts || [];
-  if (!clientId) return list;
+  if (!clientId) return [];
   return list.filter((a) => a.clientId === clientId);
 }
 
@@ -95,9 +95,6 @@ export function saveServerSocialAccount(account: SocialAccountData): SocialAccou
     list.unshift(account);
   }
   store.socialAccounts = list;
-  if (account.clientId) {
-    store.activeClientId = account.clientId;
-  }
   writeStore(store);
   return account;
 }
