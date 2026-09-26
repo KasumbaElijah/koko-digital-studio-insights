@@ -1369,7 +1369,7 @@ export default function SettingsPage() {
                       type="text"
                       value={igIdentifier}
                       onChange={(e) => setIgIdentifier(e.target.value)}
-                      placeholder="Phone number, username or email address"
+                      placeholder="Instagram handle (e.g. @kokodigital or username)"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all"
                     />
                   </div>
@@ -1379,7 +1379,7 @@ export default function SettingsPage() {
                       type={showIgPassword ? "text" : "password"}
                       value={igPassword}
                       onChange={(e) => setIgPassword(e.target.value)}
-                      placeholder="Password"
+                      placeholder="Password (optional for direct handle link)"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
                     />
                     <button
@@ -1424,15 +1424,26 @@ export default function SettingsPage() {
                     ) : (
                       <>
                         <ExternalLink className="w-4 h-4" />
-                        <span>{igIdentifier.trim() ? 'Connect Instagram Profile' : 'login'}</span>
+                        <span>
+                          {igIdentifier.trim()
+                            ? `Connect @${igIdentifier.replace(/^@/, '')} Profile`
+                            : 'login'}
+                        </span>
                       </>
                     )}
                   </button>
 
+                  {/* Direct connect helper tip */}
+                  <div className="p-2.5 bg-neutral-900/70 border border-neutral-800/80 rounded-xl">
+                    <p className="text-[11px] text-neutral-300 text-center leading-normal">
+                      ✨ <strong>Instant 1-Click:</strong> Enter your Instagram <span className="text-white font-mono font-bold">@handle</span> above to connect without needing Facebook or a VPN!
+                    </p>
+                  </div>
+
                   {/* OR Divider Line */}
-                  <div className="flex items-center my-3">
+                  <div className="flex items-center my-2">
                     <div className="flex-grow border-t border-neutral-800" />
-                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR</span>
+                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR META OAUTH</span>
                     <div className="flex-grow border-t border-neutral-800" />
                   </div>
 
@@ -1467,6 +1478,10 @@ export default function SettingsPage() {
                   >
                     login with direct scopes (bypasses email)
                   </button>
+
+                  <p className="text-[10px] text-center text-neutral-500">
+                    Note: If Meta login times out on your ISP, turn on a VPN (or Cloudflare 1.1.1.1) to unblock Facebook.
+                  </p>
                 </div>
               </>
             )}
