@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isOpeningLogin, setIsOpeningLogin] = useState<string | null>(null);
 
   // Helper to persist selected client across reloads and routes
   const handleSelectClient = (clientId: string) => {
@@ -110,17 +111,96 @@ export default function SettingsPage() {
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || null;
 
-  // Helper to open centered modal popup window directly over dashboard
+  // Helper to open centered modal popup window directly over dashboard with instant visual response
   const openCenteredPopup = (url: string, title: string) => {
     const width = 580;
-    const height = 690;
-    const left = typeof window !== 'undefined' ? window.screenX + (window.outerWidth - width) / 2 : 100;
-    const top = typeof window !== 'undefined' ? window.screenY + (window.outerHeight - height) / 2 : 100;
-    window.open(
-      url,
+    const height = 700;
+    const left = typeof window !== 'undefined' ? Math.max(0, window.screenX + (window.outerWidth - width) / 2) : 100;
+    const top = typeof window !== 'undefined' ? Math.max(0, window.screenY + (window.outerHeight - height) / 2) : 100;
+
+    // Immediately open about:blank synchronously within user click event to bypass popup blockers and network lag
+    const popup = window.open(
+      'about:blank',
       title,
-      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes,status=no,toolbar=no,menubar=no`
     );
+
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      // If popup blocker blocked the window, fallback to navigating current tab directly
+      window.location.href = url;
+      return;
+    }
+
+    try {
+      popup.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Opening Secure Login...</title>
+            <style>
+              * { box-sizing: border-box; }
+              body {
+                background: #0a0a0a;
+                color: #ffffff;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                padding: 24px;
+                text-align: center;
+              }
+              .spinner {
+                width: 44px;
+                height: 44px;
+                border: 3.5px solid rgba(255, 255, 255, 0.12);
+                border-top-color: #a8256b;
+                border-right-color: #692795;
+                border-radius: 50%;
+                animation: spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                margin-bottom: 20px;
+              }
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+              h3 {
+                font-size: 17px;
+                font-weight: 700;
+                margin: 0 0 6px;
+                color: #f5f5f5;
+              }
+              p {
+                font-size: 13px;
+                color: #888888;
+                margin: 0;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="spinner"></div>
+            <h3>Connecting to Secure Login...</h3>
+            <p>Please wait while we open the authorization dialog.</p>
+          </body>
+        </html>
+      `);
+      popup.document.close();
+    } catch (e) {}
+
+    // Focus immediately so the popup is in front of the browser window
+    try {
+      popup.focus();
+    } catch (e) {}
+
+    // Instantly navigate the popup to the OAuth URL
+    try {
+      popup.location.replace(url);
+    } catch (e) {
+      popup.location.href = url;
+    }
   };
 
   // Helper to load clients from API + localStorage
@@ -866,6 +946,9 @@ export default function SettingsPage() {
       } catch (e) {}
     }
 
+    setIsOpeningLogin('instagram');
+    setTimeout(() => setIsOpeningLogin(null), 3000);
+
     // Launch official Meta Login using direct verified scopes (bypasses config and email)
     triggerMetaFacebookLogin(true);
   };
@@ -893,13 +976,17 @@ export default function SettingsPage() {
       return;
     }
 
+    setIsOpeningLogin(bypassConfigId ? 'instagram' : 'meta');
+    setTimeout(() => setIsOpeningLogin(null), 3000);
+
     const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
     const state = encodeURIComponent(selectedClientId);
     
+    // display=popup instructs Meta to serve the lightweight, fast modal dialog instead of the heavy desktop webpage
     const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement&response_type=code`;
+      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup`
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement&response_type=code&display=popup`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };
@@ -916,6 +1003,51 @@ export default function SettingsPage() {
     if (!clientKey || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
       setShowSetupGuide(true);
       return;
+    }
+
+    setIsOpeningLogin('tiktok');
+    setTimeout(() => setIsOpeningLogin(null), 3000);
+
+    const width = 580;
+    const height = 700;
+    const left = typeof window !== 'undefined' ? Math.max(0, window.screenX + (window.outerWidth - width) / 2) : 100;
+    const top = typeof window !== 'undefined' ? Math.max(0, window.screenY + (window.outerHeight - height) / 2) : 100;
+
+    // Immediately open about:blank synchronously within user click event to prevent popup delay/blocking
+    const popup = window.open(
+      'about:blank',
+      'TikTokOAuth',
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes,status=no,toolbar=no,menubar=no`
+    );
+
+    if (popup) {
+      try {
+        popup.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Opening TikTok Login...</title>
+              <style>
+                * { box-sizing: border-box; }
+                body { background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 24px; text-align: center; }
+                .spinner { width: 44px; height: 44px; border: 3.5px solid rgba(255,255,255,0.12); border-top-color: #25F4EE; border-right-color: #FE2C55; border-radius: 50%; animation: spin 0.75s linear infinite; margin-bottom: 20px; }
+                @keyframes spin { to { transform: rotate(360deg); } }
+                h3 { font-size: 17px; font-weight: 700; margin: 0 0 6px; color: #f5f5f5; }
+                p { font-size: 13px; color: #888; margin: 0; }
+              </style>
+            </head>
+            <body>
+              <div class="spinner"></div>
+              <h3>Connecting to TikTok Login...</h3>
+              <p>Please wait while we open the TikTok authorization window.</p>
+            </body>
+          </html>
+        `);
+        popup.document.close();
+        popup.focus();
+      } catch (e) {}
     }
 
     const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -939,7 +1071,16 @@ export default function SettingsPage() {
 
     const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`;
 
-    openCenteredPopup(oauthUrl, 'TikTokOAuth');
+    if (popup && !popup.closed) {
+      try {
+        popup.location.replace(oauthUrl);
+      } catch (e) {
+        popup.location.href = oauthUrl;
+      }
+      popup.focus();
+    } else {
+      window.location.href = oauthUrl;
+    }
   };
 
   // Trigger manual refresh for all active long-lived tokens
@@ -1265,6 +1406,7 @@ export default function SettingsPage() {
                 <div className="mt-4 space-y-3">
                   <button
                     type="button"
+                    disabled={Boolean(isOpeningLogin)}
                     onClick={() => {
                       if (igIdentifier.trim()) {
                         handleConnectInstagramDirect();
@@ -1272,10 +1414,19 @@ export default function SettingsPage() {
                         triggerInstagramDirectLogin();
                       }
                     }}
-                    className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                    className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-80"
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    {igIdentifier.trim() ? 'Connect Instagram Profile' : 'login'}
+                    {isOpeningLogin === 'instagram' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Opening Meta Login...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        <span>{igIdentifier.trim() ? 'Connect Instagram Profile' : 'login'}</span>
+                      </>
+                    )}
                   </button>
 
                   {/* OR Divider Line */}
@@ -1288,20 +1439,31 @@ export default function SettingsPage() {
                   {/* Meta Business Login Button from Screenshot 2 */}
                   <button
                     type="button"
+                    disabled={Boolean(isOpeningLogin)}
                     onClick={() => triggerMetaFacebookLogin(false)}
-                    className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
                   >
-                    <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
-                    </svg>
-                    login with meta
+                    {isOpeningLogin === 'meta' ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                        <span>Connecting to Meta...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                        </svg>
+                        <span>login with meta</span>
+                      </>
+                    )}
                   </button>
 
                   {/* Direct Scopes Button (Bypasses email check completely) */}
                   <button
                     type="button"
+                    disabled={Boolean(isOpeningLogin)}
                     onClick={() => triggerMetaFacebookLogin(true)}
-                    className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-80"
                   >
                     login with direct scopes (bypasses email)
                   </button>
@@ -1494,6 +1656,7 @@ export default function SettingsPage() {
                 <div className="mt-5 space-y-2.5">
                   <button
                     type="button"
+                    disabled={Boolean(isOpeningLogin)}
                     onClick={() => {
                       if (ttIdentifier.trim()) {
                         handleConnectTikTokDirect();
@@ -1501,10 +1664,19 @@ export default function SettingsPage() {
                         triggerTikTokOAuthLogin();
                       }
                     }}
-                    className="w-full py-3.5 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.99]"
+                    className="w-full py-3.5 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.99] disabled:opacity-80"
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    {ttIdentifier.trim() ? 'Connect TikTok Profile' : 'Log in with TikTok'}
+                    {isOpeningLogin === 'tiktok' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Opening TikTok Login...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        <span>{ttIdentifier.trim() ? 'Connect TikTok Profile' : 'Log in with TikTok'}</span>
+                      </>
+                    )}
                   </button>
 
                   {/* OR Divider Line */}
@@ -1517,8 +1689,9 @@ export default function SettingsPage() {
                   {/* Secondary Action Button: TikTok Developer OAuth */}
                   <button
                     type="button"
+                    disabled={Boolean(isOpeningLogin)}
                     onClick={triggerTikTokOAuthLogin}
-                    className="w-full py-2.5 bg-[#F1F1F2] hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2.5 bg-[#F1F1F2] hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     Log in with TikTok Developer App (OAuth)
