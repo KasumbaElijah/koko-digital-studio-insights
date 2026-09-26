@@ -74,9 +74,9 @@ export default function SettingsPage() {
   const [metaAppId, setMetaAppId] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('koko_meta_app_id');
-      if (saved) return saved;
+      if (saved && saved !== '1762099978384335' && saved.length > 5) return saved;
     }
-    return process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335';
+    return process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
   });
   const [metaAppSecret, setMetaAppSecret] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -853,7 +853,7 @@ export default function SettingsPage() {
     }
   };
 
-  // 4. Trigger Official Instagram Business Login (Direct Instagram Dialog)
+  // 4. Trigger Official Meta / Instagram Business Login (Supports full Insights & Analytics)
   const triggerInstagramDirectLogin = () => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
@@ -866,17 +866,11 @@ export default function SettingsPage() {
       } catch (e) {}
     }
 
-    const origin = getOAuthOrigin();
-    const appId = (metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/instagram`);
-    const state = encodeURIComponent(selectedClientId);
-    
-    // Official Business Login for Instagram OAuth Dialog (with Instagram login)
-    const igOauthUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish&state=${state}`;
-    openCenteredPopup(igOauthUrl, 'InstagramOAuth');
+    // Launch official Meta Login using direct verified scopes (bypasses config and email)
+    triggerMetaFacebookLogin(true);
   };
 
-  // 5. Trigger Meta Facebook Business Login (With Config ID 1590313085890812)
+  // 5. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
   const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
@@ -889,8 +883,15 @@ export default function SettingsPage() {
       } catch (e) {}
     }
 
-    const fbAppId = (metaAppId || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
-    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812');
+    const fbAppId = (metaAppId && metaAppId !== '1762099978384335' && metaAppId.length > 5
+      ? metaAppId
+      : (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '1532121481550639')).trim();
+    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || null);
+
+    if (!fbAppId || fbAppId.length < 5) {
+      setShowSetupGuide(true);
+      return;
+    }
 
     const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
@@ -1698,7 +1699,7 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="text"
-                      placeholder="1762099978384335"
+                      placeholder="1532121481550639"
                       value={metaAppId}
                       onChange={(e) => setMetaAppId(e.target.value)}
                       className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"

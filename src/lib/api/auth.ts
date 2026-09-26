@@ -18,7 +18,7 @@ export async function exchangeMetaLongLivedToken(
   customAppId?: string,
   customAppSecret?: string
 ): Promise<{ accessToken: string; expiresInSeconds: number }> {
-  const appId = (customAppId || process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
+  const appId = (customAppId || process.env.FACEBOOK_APP_ID || (process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_ID !== '1762099978384335' ? process.env.INSTAGRAM_APP_ID : '') || '1532121481550639').trim();
   const appSecret = (customAppSecret || process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f').trim();
 
   if (!appId || !appSecret || appSecret.startsWith('mock_')) {

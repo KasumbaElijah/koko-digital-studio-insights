@@ -72,7 +72,7 @@ export async function GET(request: Request) {
 
   const redirectUri = `${origin}/api/auth/callback/facebook`;
 
-  const appId = (process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1762099978384335').trim();
+  const appId = (process.env.FACEBOOK_APP_ID || (process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_ID !== '1762099978384335' ? process.env.INSTAGRAM_APP_ID : '') || '1532121481550639').trim();
   const appSecret = (process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f').trim();
 
   // Strip trailing '#_' if present
