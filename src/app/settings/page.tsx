@@ -986,7 +986,7 @@ export default function SettingsPage() {
     // display=popup instructs Meta to serve the lightweight, fast modal dialog instead of the heavy desktop webpage
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement&response_type=code&display=popup`;
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code&display=popup`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };
