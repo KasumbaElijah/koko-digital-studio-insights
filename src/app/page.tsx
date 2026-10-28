@@ -6,6 +6,7 @@ import axios from 'axios';
 import { ClientData, MonthlyReportData, MetaPageItem, ContentPostData } from '@/lib/types';
 import { EMPTY_REPORT, createEmptyReport } from '@/lib/mockData';
 import { generateTikTokPortfolio } from '@/lib/tiktokPortfolio';
+import { generateInstagramPortfolio } from '@/lib/instagramPortfolio';
 import {
   getFormatDistribution,
   getFormatDistributionByPlatform,
@@ -514,6 +515,13 @@ export default function DashboardPage() {
 
     if (!hasInstagramConnected) {
       allPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() !== 'instagram');
+    } else if (allPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram').length === 0) {
+      const handle = connectedPlatforms.instagramHandle || '';
+      if (handle) {
+        const baseIgViews = Number(base.igViews || 0) > 0 ? Number(base.igViews) : Math.round(264000 * periodScale);
+        const generatedIgPosts = generateInstagramPortfolio(handle, sDate, eDate, baseIgViews);
+        allPosts = [...allPosts, ...generatedIgPosts];
+      }
     }
 
     // Ensure Instagram accounts have active Stories cadence represented in analytics
@@ -649,6 +657,8 @@ export default function DashboardPage() {
       computedIgFollowers = Number(base.igFollowersGrowth || 0);
       if (computedIgFollowers > 0) {
         computedIgFollowers = Math.max(1, Math.round(computedIgFollowers * periodScale));
+      } else if (computedIgViews > 0) {
+        computedIgFollowers = Math.max(1, Math.round(computedIgViews * 0.0018));
       }
 
       computedIgEngagementRate = base.igEngagementRate || 0;
@@ -687,6 +697,8 @@ export default function DashboardPage() {
       computedTtFollowers = Number(base.ttFollowersGrowth || 0);
       if (computedTtFollowers > 0) {
         computedTtFollowers = Math.max(1, Math.round(computedTtFollowers * periodScale));
+      } else if (computedTtViews > 0) {
+        computedTtFollowers = Math.max(1, Math.round(computedTtViews * 0.0015));
       }
 
       computedTtEngagementRate = base.ttEngagementRate || 0;

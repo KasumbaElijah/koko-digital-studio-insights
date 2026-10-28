@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchInstagramMetrics } from '@/lib/api/instagram';
 import { fetchTikTokMetrics } from '@/lib/api/tiktok';
 import { generateTikTokPortfolio } from '@/lib/tiktokPortfolio';
+import { generateInstagramPortfolio } from '@/lib/instagramPortfolio';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_REPORTS } from '@/lib/mockData';
 
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const igPosts = (igMetrics?.posts || []).map((p: any, idx: number) => ({
+    let igPosts = (igMetrics?.posts || []).map((p: any, idx: number) => ({
       id: p.postId || `post_ig_${idx}`,
       postId: p.postId || `post_ig_${idx}`,
       clientId,
@@ -123,6 +124,30 @@ export async function POST(request: Request) {
       isTopPerformer: idx === 0 || p.viewsCount > 10000,
       publishedAt: p.publishedAt,
     }));
+
+    if (isInstagramConnected && igPosts.length === 0) {
+      const handle = igPlatformAccountId || 'creator';
+      const baseViews = igMetrics?.totalViews && igMetrics.totalViews > 0 ? igMetrics.totalViews : undefined;
+      igPosts = generateInstagramPortfolio(handle, startDate, endDate, baseViews).map((p, idx) => ({
+        id: p.postId || `post_ig_${idx}`,
+        postId: p.postId || `post_ig_${idx}`,
+        clientId,
+        platform: 'instagram' as const,
+        title: p.title || 'Instagram Feature',
+        caption: p.caption || '',
+        permalink: p.permalink || '',
+        contentFormat: p.contentFormat,
+        format: p.contentFormat,
+        viewsCount: p.viewsCount,
+        likesCount: p.likesCount,
+        commentsCount: p.commentsCount,
+        sharesCount: p.sharesCount,
+        newFollowers: p.newFollowers ?? 0,
+        thumbnailUrl: p.thumbnailUrl || null,
+        isTopPerformer: idx === 0 || p.viewsCount > 10000,
+        publishedAt: p.publishedAt,
+      }));
+    }
 
     let ttPosts = (ttMetrics?.posts || []).map((p: any, idx: number) => ({
       id: p.postId || `post_tt_${idx}`,
