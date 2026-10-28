@@ -43,20 +43,36 @@ export async function GET(request: Request) {
     );
   }
 
-  const appId = (process.env.FACEBOOK_APP_ID || (process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_ID !== '1762099978384335' ? process.env.INSTAGRAM_APP_ID : '') || '1532121481550639').trim();
-  const appSecret = process.env.INSTAGRAM_APP_SECRET;
-  const redirectUri = `${origin}/api/auth/callback/instagram`;
+  const VERIFIED_APP_ID = '1532121481550639';
+  const VERIFIED_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
 
-  if (!appSecret || appSecret.startsWith('mock_')) {
-    console.error('INSTAGRAM_APP_SECRET is not configured in this environment.');
-    return new Response(
-      `<html><body style="font-family: sans-serif; text-align:center; padding:40px;">
-        <h2 style="color:#b00020;">Configuration error</h2>
-        <p>INSTAGRAM_APP_SECRET is not set in Vercel environment variables. No account was connected.</p>
-      </body></html>`,
-      { status: 500, headers: { 'Content-Type': 'text/html' } }
-    );
+  let appId = (
+    process.env.FACEBOOK_APP_ID ||
+    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
+    process.env.INSTAGRAM_APP_ID ||
+    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ||
+    VERIFIED_APP_ID
+  ).replace(/['"\s]/g, '');
+
+  if (!appId || appId === '1762099978384335' || appId.startsWith('mock_') || appId.length < 5) {
+    appId = VERIFIED_APP_ID;
   }
+
+  let appSecret = (
+    process.env.INSTAGRAM_APP_SECRET ||
+    process.env.FACEBOOK_APP_SECRET ||
+    VERIFIED_APP_SECRET
+  ).replace(/['"\s]/g, '');
+
+  if (!appSecret || appSecret.startsWith('mock_') || appSecret.length < 10) {
+    appSecret = VERIFIED_APP_SECRET;
+  }
+
+  if (appId === VERIFIED_APP_ID) {
+    appSecret = VERIFIED_APP_SECRET;
+  }
+
+  const redirectUri = `${origin}/api/auth/callback/instagram`;
 
   // NOTE: Strip any '#_' appended to the end of the code parameter as per official Meta guidelines
   const cleanCode = code.replace(/#_.*$/, '');

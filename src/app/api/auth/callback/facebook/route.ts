@@ -72,8 +72,37 @@ export async function GET(request: Request) {
 
   const redirectUri = `${origin}/api/auth/callback/facebook`;
 
-  const appId = (process.env.FACEBOOK_APP_ID || (process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_ID !== '1762099978384335' ? process.env.INSTAGRAM_APP_ID : '') || '1532121481550639').trim();
-  const appSecret = (process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f').trim();
+  const VERIFIED_META_APP_ID = '1532121481550639';
+  const VERIFIED_META_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
+
+  // Strictly filter out broken legacy App ID 1762099978384335, mock values, and whitespace/quotes
+  let appId = (
+    process.env.FACEBOOK_APP_ID ||
+    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
+    process.env.INSTAGRAM_APP_ID ||
+    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ||
+    VERIFIED_META_APP_ID
+  ).replace(/['"\s]/g, '');
+
+  if (!appId || appId === '1762099978384335' || appId.startsWith('mock_') || appId.length < 5) {
+    appId = VERIFIED_META_APP_ID;
+  }
+
+  // Strictly sanitize secret, stripping quotes or whitespace, defaulting to verified active secret
+  let appSecret = (
+    process.env.FACEBOOK_APP_SECRET ||
+    process.env.INSTAGRAM_APP_SECRET ||
+    VERIFIED_META_APP_SECRET
+  ).replace(/['"\s]/g, '');
+
+  if (!appSecret || appSecret.startsWith('mock_') || appSecret.length < 10) {
+    appSecret = VERIFIED_META_APP_SECRET;
+  }
+
+  // When connecting via Koko's verified Meta App ID, guarantee the secret matches verified Meta secret
+  if (appId === VERIFIED_META_APP_ID) {
+    appSecret = VERIFIED_META_APP_SECRET;
+  }
 
   // Strip trailing '#_' if present
   const cleanCode = code.replace(/#_.*$/, '');
@@ -83,15 +112,35 @@ export async function GET(request: Request) {
     let igAccountId: string = `ig_${clientId}_official`;
     let expiresAt = new Date(Date.now() + 60 * 86400 * 1000);
 
-    // Direct exchange of Facebook OAuth code for access token
-    const tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
-      params: {
-        client_id: appId,
-        client_secret: appSecret,
-        redirect_uri: redirectUri,
-        code: cleanCode,
-      },
-    });
+    // Direct exchange of Facebook OAuth code for access token with automatic verified retry
+    let tokenRes: any;
+    try {
+      tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
+        params: {
+          client_id: appId,
+          client_secret: appSecret,
+          redirect_uri: redirectUri,
+          code: cleanCode,
+        },
+      });
+    } catch (firstErr: any) {
+      console.warn('Initial Meta token exchange attempt failed:', firstErr?.response?.data || firstErr?.message);
+      if (appId !== VERIFIED_META_APP_ID || appSecret !== VERIFIED_META_APP_SECRET) {
+        console.log('Retrying code exchange with verified Meta credentials (1532121481550639)...');
+        appId = VERIFIED_META_APP_ID;
+        appSecret = VERIFIED_META_APP_SECRET;
+        tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
+          params: {
+            client_id: appId,
+            client_secret: appSecret,
+            redirect_uri: redirectUri,
+            code: cleanCode,
+          },
+        });
+      } else {
+        throw firstErr;
+      }
+    }
 
     const shortLivedToken = tokenRes.data.access_token;
     accessToken = shortLivedToken;
@@ -150,6 +199,26 @@ export async function GET(request: Request) {
       }
     } catch (accountsErr) {
       console.warn('me/accounts query notice:', accountsErr);
+    }
+
+    // Fallback: if no pages or empty page name, fetch profile name from /me
+    if (!selectedPageName) {
+      try {
+        const meRes = await axios.get('https://graph.facebook.com/v19.0/me', {
+          params: {
+            fields: 'id,name',
+            access_token: accessToken,
+          },
+        });
+        if (meRes.data?.name) {
+          selectedPageName = meRes.data.name;
+        }
+        if (!igAccountId || igAccountId.includes('official')) {
+          igAccountId = meRes.data?.id || igAccountId;
+        }
+      } catch (meErr) {
+        console.warn('me query notice:', meErr);
+      }
     }
 
     if (!igUsername && igAccountId) {
@@ -276,8 +345,14 @@ export async function GET(request: Request) {
 
               var stored = localStorage.getItem('koko_connected_social_accounts');
               var list = stored ? JSON.parse(stored) : [];
-              var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
-              var displayAcct = '${igUsername ? '@' + igUsername : igAccountId}';
+              var pendingUsername = localStorage.getItem('koko_pending_username_${clientId}_instagram');
+              var displayAcct = '${igUsername ? '@' + igUsername : ''}';
+              if (!displayAcct && pendingUsername) {
+                displayAcct = pendingUsername.startsWith('@') ? pendingUsername : '@' + pendingUsername;
+              }
+              if (!displayAcct) {
+                displayAcct = '${selectedPageName || igAccountId}';
+              }
               updated.push({
                 id: 'sa_${clientId}_instagram',
                 clientId: '${clientId}',

@@ -48,9 +48,14 @@ export async function GET(request: Request) {
         shortcode = match[1];
       }
 
-      // Try Meta oEmbed API if credentials configured
-      const appId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
-      const appSecret = process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f';
+      // Try Meta oEmbed API with verified credentials
+      const VERIFIED_APP_ID = '1532121481550639';
+      const VERIFIED_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
+      let appId = (process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || VERIFIED_APP_ID).replace(/['"\s]/g, '');
+      if (!appId || appId === '1762099978384335' || appId.length < 5) appId = VERIFIED_APP_ID;
+      let appSecret = (process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || VERIFIED_APP_SECRET).replace(/['"\s]/g, '');
+      if (!appSecret || appSecret.length < 10) appSecret = VERIFIED_APP_SECRET;
+      if (appId === VERIFIED_APP_ID) appSecret = VERIFIED_APP_SECRET;
 
       if (appId && appSecret) {
         try {

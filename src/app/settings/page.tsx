@@ -75,9 +75,15 @@ export default function SettingsPage() {
   const [metaAppId, setMetaAppId] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('koko_meta_app_id');
-      if (saved && saved !== '1762099978384335' && saved.length > 5) return saved;
+      if (saved === '1762099978384335') {
+        localStorage.removeItem('koko_meta_app_id');
+      } else if (saved && saved.length > 5) {
+        return saved;
+      }
     }
-    return process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639';
+    const envAppId = (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '').replace(/['"\s]/g, '');
+    if (envAppId && envAppId !== '1762099978384335' && envAppId.length > 5) return envAppId;
+    return '1532121481550639';
   });
   const [metaAppSecret, setMetaAppSecret] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -966,9 +972,8 @@ export default function SettingsPage() {
       } catch (e) {}
     }
 
-    const fbAppId = (metaAppId && metaAppId !== '1762099978384335' && metaAppId.length > 5
-      ? metaAppId
-      : (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '1532121481550639')).trim();
+    const rawAppId = (metaAppId || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639').replace(/['"\s]/g, '');
+    const fbAppId = (!rawAppId || rawAppId === '1762099978384335' || rawAppId.length < 5) ? '1532121481550639' : rawAppId;
     const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || null);
 
     if (!fbAppId || fbAppId.length < 5) {

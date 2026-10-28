@@ -18,15 +18,35 @@ export async function exchangeMetaLongLivedToken(
   customAppId?: string,
   customAppSecret?: string
 ): Promise<{ accessToken: string; expiresInSeconds: number }> {
-  const appId = (customAppId || process.env.FACEBOOK_APP_ID || (process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_ID !== '1762099978384335' ? process.env.INSTAGRAM_APP_ID : '') || '1532121481550639').trim();
-  const appSecret = (customAppSecret || process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || '6986eab2100e2e9caf9d858650fb873f').trim();
+  const VERIFIED_APP_ID = '1532121481550639';
+  const VERIFIED_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
 
-  if (!appId || !appSecret || appSecret.startsWith('mock_')) {
-    console.warn('INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET missing; returning short-lived token.');
-    return {
-      accessToken: shortLivedToken,
-      expiresInSeconds: 5184000, // 60 days
-    };
+  let appId = (
+    customAppId ||
+    process.env.FACEBOOK_APP_ID ||
+    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
+    process.env.INSTAGRAM_APP_ID ||
+    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ||
+    VERIFIED_APP_ID
+  ).replace(/['"\s]/g, '');
+
+  if (!appId || appId === '1762099978384335' || appId.startsWith('mock_') || appId.length < 5) {
+    appId = VERIFIED_APP_ID;
+  }
+
+  let appSecret = (
+    customAppSecret ||
+    process.env.FACEBOOK_APP_SECRET ||
+    process.env.INSTAGRAM_APP_SECRET ||
+    VERIFIED_APP_SECRET
+  ).replace(/['"\s]/g, '');
+
+  if (!appSecret || appSecret.startsWith('mock_') || appSecret.length < 10) {
+    appSecret = VERIFIED_APP_SECRET;
+  }
+
+  if (appId === VERIFIED_APP_ID) {
+    appSecret = VERIFIED_APP_SECRET;
   }
 
   try {
@@ -58,14 +78,15 @@ export async function exchangeMetaLongLivedToken(
  * GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=...&access_token=...
  */
 export async function exchangeInstagramLongLivedToken(shortLivedToken: string): Promise<{ accessToken: string; expiresInSeconds: number }> {
-  const appSecret = process.env.INSTAGRAM_APP_SECRET;
+  const VERIFIED_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
+  let appSecret = (
+    process.env.INSTAGRAM_APP_SECRET ||
+    process.env.FACEBOOK_APP_SECRET ||
+    VERIFIED_APP_SECRET
+  ).replace(/['"\s]/g, '');
 
-  if (!appSecret || appSecret.startsWith('mock_')) {
-    console.warn('INSTAGRAM_APP_SECRET missing; returning mock long-lived token.');
-    return {
-      accessToken: `mock_ig_60day_${Date.now()}`,
-      expiresInSeconds: 5184000,
-    };
+  if (!appSecret || appSecret.startsWith('mock_') || appSecret.length < 10) {
+    appSecret = VERIFIED_APP_SECRET;
   }
 
   try {
