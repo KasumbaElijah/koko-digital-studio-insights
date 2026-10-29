@@ -96,9 +96,13 @@ export default function SettingsPage() {
   const [configIdInput, setConfigIdInput] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('koko_meta_config_id');
-      if (saved) return saved;
+      if (saved && saved !== '1590313085890812') return saved;
+      try {
+        localStorage.removeItem('koko_meta_config_id');
+      } catch (e) {}
     }
-    return process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '1590313085890812';
+    const envConfig = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '';
+    return envConfig !== '1590313085890812' ? envConfig : '';
   });
   const [tiktokClientKey, setTiktokClientKey] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -519,7 +523,7 @@ export default function SettingsPage() {
         type: 'reauth',
         message: 'To scan managed Facebook Pages & Instagram accounts, please connect with Facebook to grant Page permissions.',
       });
-      triggerMetaFacebookLogin(false, true);
+      triggerMetaFacebookLogin(true, true);
       return;
     }
 
@@ -1015,7 +1019,7 @@ export default function SettingsPage() {
   };
 
   // 5. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
-  const triggerMetaFacebookLogin = (bypassConfigId: boolean = false, rerequest: boolean = false) => {
+  const triggerMetaFacebookLogin = (bypassConfigId: boolean = true, rerequest: boolean = false) => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
       setShowAddClientModal(true);
@@ -1029,23 +1033,27 @@ export default function SettingsPage() {
 
     const rawAppId = (metaAppId || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639').replace(/['"\s]/g, '');
     const fbAppId = (!rawAppId || rawAppId === '1762099978384335' || rawAppId.length < 5) ? '1532121481550639' : rawAppId;
-    const configId = bypassConfigId ? null : (configIdInput.trim() || process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || null);
+
+    // Reject legacy config ID 1590313085890812 because it forces the invalid 'email' scope rejected by Meta
+    const cleanConfigId = (configIdInput || '').replace(/['"\s]/g, '').trim();
+    const configId = (!bypassConfigId && cleanConfigId && cleanConfigId !== '1590313085890812') ? cleanConfigId : null;
 
     if (!fbAppId || fbAppId.length < 5) {
       setShowSetupGuide(true);
       return;
     }
 
-    setIsOpeningLogin(bypassConfigId ? 'instagram' : 'meta');
+    setIsOpeningLogin('instagram');
     setTimeout(() => setIsOpeningLogin(null), 3000);
 
     const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
     const state = encodeURIComponent(selectedClientId);
     const rerequestParam = rerequest ? '&auth_type=rerequest' : '';
+    // Verified scopes: instagram_basic, instagram_manage_insights, pages_show_list, pages_read_engagement
+    // Note: 'email' is strictly omitted because it causes Meta OAuth error 'Invalid Scopes: email'
     const scopes = 'instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement';
     
-    // display=popup instructs Meta to serve the lightweight, fast modal dialog instead of the heavy desktop webpage
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup${rerequestParam}`
       : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=${scopes}&response_type=code&display=popup${rerequestParam}`;
@@ -1548,14 +1556,14 @@ export default function SettingsPage() {
                     <div className="flex-grow border-t border-neutral-800" />
                   </div>
 
-                  {/* Meta Business Login Button from Screenshot 2 */}
+                  {/* Meta Business Login Button */}
                   <button
                     type="button"
                     disabled={Boolean(isOpeningLogin)}
-                    onClick={() => triggerMetaFacebookLogin(false)}
+                    onClick={() => triggerMetaFacebookLogin(true)}
                     className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
                   >
-                    {isOpeningLogin === 'meta' ? (
+                    {isOpeningLogin === 'instagram' || isOpeningLogin === 'meta' ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
                         <span>Connecting to Meta...</span>
@@ -1568,16 +1576,6 @@ export default function SettingsPage() {
                         <span>login with meta</span>
                       </>
                     )}
-                  </button>
-
-                  {/* Direct Scopes Button (Bypasses email check completely) */}
-                  <button
-                    type="button"
-                    disabled={Boolean(isOpeningLogin)}
-                    onClick={() => triggerMetaFacebookLogin(true)}
-                    className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800/80 text-[11px] font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-80"
-                  >
-                    login with direct scopes (bypasses email)
                   </button>
 
                   <p className="text-[10px] text-center text-neutral-500">
@@ -2000,7 +1998,7 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="text"
-                      placeholder="1590313085890812"
+                      placeholder="Leave blank for verified direct scopes"
                       value={configIdInput}
                       onChange={(e) => setConfigIdInput(e.target.value)}
                       className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"
