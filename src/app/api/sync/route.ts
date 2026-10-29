@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { fetchInstagramMetrics } from '@/lib/api/instagram';
 import { fetchTikTokMetrics } from '@/lib/api/tiktok';
 import { generateTikTokPortfolio } from '@/lib/tiktokPortfolio';
-import { generateInstagramPortfolio } from '@/lib/instagramPortfolio';
 import { prisma, serializeData } from '@/lib/prisma';
 import { INITIAL_REPORTS } from '@/lib/mockData';
 
@@ -125,31 +124,7 @@ export async function POST(request: Request) {
       publishedAt: p.publishedAt,
     }));
 
-    if (isInstagramConnected && igPosts.length === 0) {
-      const handle = igPlatformAccountId || 'creator';
-      const baseViews = igMetrics?.totalViews && igMetrics.totalViews > 0 ? igMetrics.totalViews : undefined;
-      igPosts = generateInstagramPortfolio(handle, startDate, endDate, baseViews).map((p, idx) => ({
-        id: p.postId || `post_ig_${idx}`,
-        postId: p.postId || `post_ig_${idx}`,
-        clientId,
-        platform: 'instagram' as const,
-        title: p.title || 'Instagram Feature',
-        caption: p.caption || '',
-        permalink: p.permalink || '',
-        contentFormat: p.contentFormat,
-        format: p.contentFormat,
-        viewsCount: p.viewsCount,
-        likesCount: p.likesCount,
-        commentsCount: p.commentsCount,
-        sharesCount: p.sharesCount,
-        newFollowers: p.newFollowers ?? 0,
-        thumbnailUrl: p.thumbnailUrl || null,
-        isTopPerformer: idx === 0 || p.viewsCount > 10000,
-        publishedAt: p.publishedAt,
-      }));
-    }
-
-    let ttPosts = (ttMetrics?.posts || []).map((p: any, idx: number) => ({
+    const ttPosts = (ttMetrics?.posts || []).map((p: any, idx: number) => ({
       id: p.postId || `post_tt_${idx}`,
       postId: p.postId || `post_tt_${idx}`,
       clientId,
@@ -172,17 +147,22 @@ export async function POST(request: Request) {
     // Real posts only - no fake portfolio blueprints
     const incomingPosts = [...igPosts, ...ttPosts];
     const incomingIds = new Set(incomingPosts.map((p) => p.postId || p.id));
+    const isMockPost = (p: any) =>
+      p.thumbnailUrl?.includes('unsplash') ||
+      String(p.id || '').includes('post_ig_') ||
+      (p.platform === 'tiktok' && (String(p.id || '').includes('_1') || String(p.id || '').includes('_2')));
+
     const preservedOldPosts = existingPostsFromClient.filter(
       (p) =>
         !incomingIds.has(p.postId || p.id) &&
         (!p.clientId || p.clientId === clientId) &&
         (isInstagramConnected || (p.platform || '').toLowerCase() !== 'instagram') &&
         (isTikTokConnected || (p.platform || '').toLowerCase() !== 'tiktok') &&
-        !(p.platform === 'tiktok' && (p.thumbnailUrl?.includes('unsplash') || String(p.id).includes('_1') || String(p.id).includes('_2')))
+        !isMockPost(p)
     );
     const posts = incomingPosts.length > 0
       ? [...incomingPosts, ...preservedOldPosts]
-      : (existingPostsFromClient.filter((p) => (!p.clientId || p.clientId === clientId) && (isInstagramConnected || p.platform !== 'instagram') && (isTikTokConnected || p.platform !== 'tiktok')));
+      : existingPostsFromClient.filter((p) => (!p.clientId || p.clientId === clientId) && (isInstagramConnected || p.platform !== 'instagram') && (isTikTokConnected || p.platform !== 'tiktok') && !isMockPost(p));
 
     const sDateObj = new Date(startDateStr);
     const eDateObj = new Date(endDateStr);

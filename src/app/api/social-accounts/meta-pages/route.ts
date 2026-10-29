@@ -11,24 +11,40 @@ export async function GET(request: Request) {
     const clientId = url.searchParams.get('clientId');
     let accessToken = url.searchParams.get('accessToken') || '';
 
-    // If access token not passed directly, look up from Prisma
+    // If access token not passed directly, look up from serverStore or Prisma
     if (!accessToken && clientId) {
       try {
-        const sa = await prisma.socialAccount.findFirst({
-          where: { clientId, platform: 'instagram' },
-        });
-        if (sa && sa.accessToken) {
-          accessToken = sa.accessToken;
+        const { getServerSocialAccounts } = await import('@/lib/serverStore');
+        const accounts = getServerSocialAccounts(clientId);
+        const ig = accounts.find((a) => a.platform === 'instagram');
+        if (ig && ig.accessToken && !ig.accessToken.startsWith('ig_direct_') && !ig.accessToken.startsWith('mock_') && ig.accessToken.length > 20) {
+          accessToken = ig.accessToken;
         }
-      } catch (dbErr) {
-        console.warn('Prisma lookup notice in meta-pages GET:', dbErr);
+      } catch (storeErr) {}
+
+      if (!accessToken) {
+        try {
+          const sa = await prisma.socialAccount.findFirst({
+            where: { clientId, platform: 'instagram' },
+          });
+          if (sa && sa.accessToken && !sa.accessToken.startsWith('ig_direct_') && !sa.accessToken.startsWith('mock_') && sa.accessToken.length > 20) {
+            accessToken = sa.accessToken;
+          }
+        } catch (dbErr) {
+          console.warn('Prisma lookup notice in meta-pages GET:', dbErr);
+        }
       }
     }
 
-    if (!accessToken) {
+    if (!accessToken || accessToken.startsWith('ig_direct_') || accessToken.startsWith('mock_') || accessToken === 'active_long_lived_token') {
       return NextResponse.json(
-        { success: false, pages: [], error: 'No active Meta access token provided or found.' },
-        { status: 400 }
+        {
+          success: false,
+          needsReauth: true,
+          pages: [],
+          error: 'A valid Meta Facebook login is required to scan managed Pages and Instagram accounts.',
+        },
+        { status: 200 }
       );
     }
 
@@ -66,10 +82,22 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     const errorDetails = error.response?.data?.error?.message || error.message || 'Unknown Meta API error';
+    const isOAuthError =
+      error?.response?.status === 400 ||
+      error?.response?.status === 401 ||
+      errorDetails.toLowerCase().includes('token') ||
+      errorDetails.toLowerCase().includes('session') ||
+      errorDetails.toLowerCase().includes('permission') ||
+      errorDetails.toLowerCase().includes('oauth');
     console.warn('Error fetching Meta pages:', errorDetails);
     return NextResponse.json(
-      { success: false, pages: [], error: errorDetails },
-      { status: 500 }
+      {
+        success: false,
+        needsReauth: isOAuthError,
+        pages: [],
+        error: errorDetails,
+      },
+      { status: 200 }
     );
   }
 }
@@ -98,6 +126,23 @@ export async function POST(request: Request) {
       : instagramId
       ? instagramId
       : `page_${pageId}`;
+
+    // Save to persistent file store
+    try {
+      const { saveServerSocialAccount } = await import('@/lib/serverStore');
+      saveServerSocialAccount({
+        id: `sa_${clientId}_instagram`,
+        clientId,
+        platform: 'instagram',
+        platformAccountId: displayAccount,
+        accessToken: pageAccessToken || '',
+        pageId,
+        pageName: pageName || '',
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+    } catch (storeErr) {
+      console.warn('Server store save notice in meta-pages switch:', storeErr);
+    }
 
     try {
       await prisma.socialAccount.upsert({

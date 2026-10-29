@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
   const [isFetchingPages, setIsFetchingPages] = useState(false);
   const [activePageId, setActivePageId] = useState<string>('');
+  const [scanNotice, setScanNotice] = useState<{ type: 'success' | 'info' | 'reauth' | 'error'; message: string } | null>(null);
 
   // Card Design States matching familiar mobile login UI
   const [tiktokTab, setTiktokTab] = useState<'email' | 'phone'>('email');
@@ -490,27 +491,67 @@ export default function SettingsPage() {
   };
 
   // Fetch / Refresh available Meta Facebook Pages & Instagram accounts
-  const fetchAvailablePages = async () => {
+  const fetchAvailablePages = async (forceReauth: boolean = false) => {
     if (!selectedClientId) return;
     setIsFetchingPages(true);
-    try {
-      let token = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
-      if (!token) {
-        const stored = localStorage.getItem('koko_connected_social_accounts');
-        if (stored) {
-          const list: SocialAccountData[] = JSON.parse(stored);
-          const ig = list.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
-          if (ig) token = ig.accessToken;
-        }
-      }
+    setScanNotice(null);
 
-      const res = await axios.get(`/api/social-accounts/meta-pages?clientId=${selectedClientId}${token ? `&accessToken=${encodeURIComponent(token)}` : ''}`);
-      if (res.data?.success && Array.isArray(res.data?.pages)) {
+    let token = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
+    if (!token) {
+      const stored = localStorage.getItem('koko_connected_social_accounts');
+      if (stored) {
+        const list: SocialAccountData[] = JSON.parse(stored);
+        const ig = list.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+        if (ig && ig.accessToken) token = ig.accessToken;
+      }
+    }
+
+    const hasRealMetaToken =
+      Boolean(token) &&
+      !token.startsWith('ig_direct_') &&
+      !token.startsWith('mock_') &&
+      token !== 'active_long_lived_token' &&
+      token.length > 20;
+
+    if (!hasRealMetaToken || forceReauth) {
+      setIsFetchingPages(false);
+      setScanNotice({
+        type: 'reauth',
+        message: 'To scan managed Facebook Pages & Instagram accounts, please connect with Facebook to grant Page permissions.',
+      });
+      triggerMetaFacebookLogin(false, true);
+      return;
+    }
+
+    try {
+      const res = await axios.get(
+        `/api/social-accounts/meta-pages?clientId=${selectedClientId}&accessToken=${encodeURIComponent(token)}`
+      );
+
+      if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
         setAvailablePages(res.data.pages);
         localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+        setScanNotice({
+          type: 'success',
+          message: `Found ${res.data.pages.length} managed Facebook Page${res.data.pages.length > 1 ? 's' : ''}! Select your active channel below.`,
+        });
+      } else if (res.data?.needsReauth) {
+        setScanNotice({
+          type: 'reauth',
+          message: res.data?.error || 'A Meta Facebook login with Page permissions is required to scan pages.',
+        });
+      } else {
+        setScanNotice({
+          type: 'reauth',
+          message: 'No managed Facebook Pages found under this Meta account. Make sure your Instagram business account is linked to a Facebook Page, or click below to re-authorize.',
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Notice fetching meta pages:', err);
+      setScanNotice({
+        type: 'reauth',
+        message: 'Unable to scan Pages with current session. Click below to reconnect with Facebook.',
+      });
     } finally {
       setIsFetchingPages(false);
     }
@@ -551,11 +592,18 @@ export default function SettingsPage() {
       }
       if (page.access_token) {
         localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, page.access_token);
+        document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(page.access_token)}; path=/; max-age=31536000; SameSite=Lax`;
       }
+      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayAcct)}; path=/; max-age=31536000; SameSite=Lax`;
 
       setSocialAccounts((prev) => {
         const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
         return [...filtered, newAccount];
+      });
+
+      setScanNotice({
+        type: 'success',
+        message: `Active channel switched to ${displayAcct}! Live analytics synchronized.`,
       });
     } catch (e) {
       console.warn('LocalStorage save error on page select:', e);
@@ -570,6 +618,13 @@ export default function SettingsPage() {
         instagramId,
         instagramUsername,
       });
+
+      // Synchronize live analytics immediately for the newly selected Page
+      axios.post('/api/sync', {
+        clientId: selectedClientId,
+        platform: 'instagram',
+        pageId: page.id,
+      }).catch(() => {});
     } catch (apiErr) {
       console.warn('API meta-pages switch notice:', apiErr);
     }
@@ -960,7 +1015,7 @@ export default function SettingsPage() {
   };
 
   // 5. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
-  const triggerMetaFacebookLogin = (bypassConfigId: boolean = false) => {
+  const triggerMetaFacebookLogin = (bypassConfigId: boolean = false, rerequest: boolean = false) => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
       setShowAddClientModal(true);
@@ -987,11 +1042,13 @@ export default function SettingsPage() {
     const origin = getOAuthOrigin();
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
     const state = encodeURIComponent(selectedClientId);
+    const rerequestParam = rerequest ? '&auth_type=rerequest' : '';
+    const scopes = 'instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement';
     
     // display=popup instructs Meta to serve the lightweight, fast modal dialog instead of the heavy desktop webpage
     const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code&display=popup`;
+      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup${rerequestParam}`
+      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=${scopes}&response_type=code&display=popup${rerequestParam}`;
 
     openCenteredPopup(oauthUrl, 'MetaOAuth');
   };
@@ -1253,7 +1310,7 @@ export default function SettingsPage() {
                     </span>
                     <button
                       type="button"
-                      onClick={fetchAvailablePages}
+                      onClick={() => fetchAvailablePages(false)}
                       disabled={isFetchingPages}
                       className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
                     >
@@ -1261,6 +1318,32 @@ export default function SettingsPage() {
                       {isFetchingPages ? 'Scanning...' : 'Scan Pages'}
                     </button>
                   </div>
+
+                  {scanNotice && (
+                    <div
+                      className={`p-2.5 rounded-xl border text-xs flex flex-col gap-1.5 transition-all ${
+                        scanNotice.type === 'success'
+                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                          : scanNotice.type === 'error'
+                          ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                          : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                      }`}
+                    >
+                      <div className="flex items-start gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span className="leading-snug">{scanNotice.message}</span>
+                      </div>
+                      {scanNotice.type === 'reauth' && (
+                        <button
+                          type="button"
+                          onClick={() => fetchAvailablePages(true)}
+                          className="self-start mt-1 px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[11px] rounded-lg transition-colors cursor-pointer"
+                        >
+                          Authorize & Select Pages via Facebook →
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {availablePages.length > 0 ? (
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -1311,6 +1394,10 @@ export default function SettingsPage() {
                               ) : (
                                 <button
                                   type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectPage(page);
+                                  }}
                                   className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
                                 >
                                   Select
@@ -1320,13 +1407,22 @@ export default function SettingsPage() {
                           </div>
                         );
                       })}
+                      <button
+                        type="button"
+                        onClick={() => fetchAvailablePages(true)}
+                        disabled={isFetchingPages}
+                        className="w-full pt-1 text-center text-[10px] text-neutral-400 hover:text-emerald-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className={`w-2.5 h-2.5 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                        Re-scan or Grant More Pages via Facebook
+                      </button>
                     </div>
                   ) : (
                     <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-xs text-neutral-400">
                       <p>Active channel: <strong className="text-white">{igAccount.platformAccountId}</strong>.</p>
                       <button
                         type="button"
-                        onClick={fetchAvailablePages}
+                        onClick={() => fetchAvailablePages(false)}
                         disabled={isFetchingPages}
                         className="mt-1.5 text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       >

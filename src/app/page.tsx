@@ -6,7 +6,6 @@ import axios from 'axios';
 import { ClientData, MonthlyReportData, MetaPageItem, ContentPostData } from '@/lib/types';
 import { EMPTY_REPORT, createEmptyReport } from '@/lib/mockData';
 import { generateTikTokPortfolio } from '@/lib/tiktokPortfolio';
-import { generateInstagramPortfolio } from '@/lib/instagramPortfolio';
 import {
   getFormatDistribution,
   getFormatDistributionByPlatform,
@@ -515,13 +514,15 @@ export default function DashboardPage() {
 
     if (!hasInstagramConnected) {
       allPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() !== 'instagram');
-    } else if (allPosts.filter((p) => (p.platform || '').toLowerCase() === 'instagram').length === 0) {
-      const handle = connectedPlatforms.instagramHandle || '';
-      if (handle) {
-        const baseIgViews = Number(base.igViews || 0) > 0 ? Number(base.igViews) : Math.round(264000 * periodScale);
-        const generatedIgPosts = generateInstagramPortfolio(handle, sDate, eDate, baseIgViews);
-        allPosts = [...allPosts, ...generatedIgPosts];
-      }
+    } else {
+      // Purge any mock Unsplash posts or synthetic blueprints so only real creator media is shown
+      allPosts = allPosts.filter(
+        (p) =>
+          (p.platform || '').toLowerCase() !== 'instagram' ||
+          (!p.thumbnailUrl?.includes('unsplash') &&
+           !String(p.id || '').includes('post_ig_') &&
+           !String(p.id || '').includes('ig_story_cadence_'))
+      );
     }
 
     // Ensure Instagram accounts have active Stories cadence represented in analytics

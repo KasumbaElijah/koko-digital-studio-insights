@@ -345,6 +345,7 @@ export async function GET(request: Request) {
 
               var stored = localStorage.getItem('koko_connected_social_accounts');
               var list = stored ? JSON.parse(stored) : [];
+              var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
               var pendingUsername = localStorage.getItem('koko_pending_username_${clientId}_instagram');
               var displayAcct = '${igUsername ? '@' + igUsername : ''}';
               if (!displayAcct && pendingUsername) {

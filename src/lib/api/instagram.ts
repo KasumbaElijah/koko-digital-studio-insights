@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { generateInstagramPortfolio } from '../instagramPortfolio';
 
 export interface InstagramMetricResult {
   followersGrowth: number;
@@ -269,25 +268,8 @@ export async function fetchInstagramMetrics(
       }
     }
 
-    // Strategy 3: Real creator portfolio fallback for connected handles
-    if (postsList.length === 0 && cleanAccountId) {
-      const generated = generateInstagramPortfolio(cleanAccountId, startDate, endDate);
-      if (generated && generated.length > 0) {
-        postsList = generated.map((p) => ({
-          postId: p.postId || p.id,
-          title: p.title,
-          caption: p.caption,
-          permalink: p.permalink || undefined,
-          contentFormat: p.contentFormat,
-          viewsCount: p.viewsCount,
-          likesCount: p.likesCount,
-          commentsCount: p.commentsCount,
-          sharesCount: p.sharesCount,
-          thumbnailUrl: p.thumbnailUrl,
-          publishedAt: p.publishedAt,
-        }));
-      }
-    }
+    // Strategy 3: No fallback mock data — keep postsList strictly authentic
+    // Only real posts returned by Meta Graph API or added manually will be displayed.
 
     if (cleanAccountId && /^\d+$/.test(cleanAccountId) && isRealToken) {
       try {
