@@ -31,17 +31,209 @@ export async function GET(request: Request) {
       const errorMsg = url.searchParams.get('error_message') || url.searchParams.get('error_description') || error;
 
       if (error) {
+        const isEmailScopeError = String(errorMsg || '').toLowerCase().includes('email') || String(error || '').toLowerCase().includes('scope');
+
         return new Response(
           `<!DOCTYPE html>
           <html>
-            <head><meta charset="utf-8"/><title>Meta Notice</title></head>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
-              <div style="max-width: 440px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 24px;">
-                <div style="width: 50px; height: 50px; line-height: 50px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 24px; margin: 0 auto 16px;">!</div>
-                <h3 style="font-size: 18px; font-weight: 700; margin: 0 0 10px;">Meta Notice</h3>
-                <p style="color: #aaa; font-size: 13px; margin: 0 0 20px; line-height: 1.5;">${errorMsg || 'Authorization was canceled or did not return an authorization code.'}</p>
-                <a href="${origin}/settings" style="display: block; padding: 12px; background: #fff; color: #000; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 13px;">Return to Settings</a>
+            <head>
+              <meta charset="utf-8"/>
+              <title>Meta Setup Notice - Koko Digital Studio</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1"/>
+              <style>
+                * { box-sizing: border-box; }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                  background: #09090b;
+                  color: #f4f4f5;
+                  margin: 0;
+                  padding: 24px 16px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                }
+                .card {
+                  max-width: 460px;
+                  width: 100%;
+                  background: #141416;
+                  border: 1px solid #27272a;
+                  border-radius: 24px;
+                  padding: 32px 24px;
+                  text-align: center;
+                  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+                }
+                .badge {
+                  display: inline-block;
+                  padding: 4px 10px;
+                  border-radius: 9999px;
+                  font-size: 11px;
+                  font-weight: 700;
+                  background: rgba(239, 68, 68, 0.15);
+                  color: #ef4444;
+                  border: 1px solid rgba(239, 68, 68, 0.3);
+                  margin-bottom: 12px;
+                }
+                h3 { font-size: 19px; font-weight: 800; margin: 0 0 10px; color: #fff; }
+                p { color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+                .steps-box {
+                  text-align: left;
+                  background: #1c1c1f;
+                  border: 1px solid #2f2f35;
+                  border-radius: 14px;
+                  padding: 14px;
+                  margin-bottom: 20px;
+                  font-size: 12px;
+                  color: #d4d4d8;
+                }
+                .steps-box ol { margin: 6px 0 0; padding-left: 18px; }
+                .steps-box li { margin-bottom: 6px; }
+                .steps-box a { color: #38bdf8; text-decoration: underline; font-weight: 600; }
+                .btn {
+                  display: block;
+                  width: 100%;
+                  padding: 12px;
+                  border-radius: 12px;
+                  font-weight: 700;
+                  font-size: 13px;
+                  text-decoration: none;
+                  cursor: pointer;
+                  border: none;
+                  transition: all 0.15s ease;
+                }
+                .btn-primary {
+                  background: #10b981;
+                  color: #000;
+                  margin-bottom: 10px;
+                }
+                .btn-primary:hover { background: #34d399; }
+                .btn-secondary {
+                  background: #27272a;
+                  color: #fff;
+                  margin-bottom: 16px;
+                }
+                .btn-secondary:hover { background: #3f3f46; }
+                .token-box {
+                  margin-top: 18px;
+                  padding-top: 16px;
+                  border-top: 1px solid #27272a;
+                  text-align: left;
+                }
+                .token-input {
+                  width: 100%;
+                  background: #09090b;
+                  border: 1px solid #3f3f46;
+                  color: #fff;
+                  padding: 10px;
+                  border-radius: 10px;
+                  font-size: 12px;
+                  outline: none;
+                  margin-bottom: 8px;
+                }
+                .token-input:focus { border-color: #10b981; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <span class="badge">App ID: 1532121481550639</span>
+                <h3>${isEmailScopeError ? 'Meta Developer Permission Required' : 'Meta Notice'}</h3>
+                <p>
+                  ${isEmailScopeError
+                    ? 'Meta requires developer accounts testing Facebook Login on this app to add the <strong>email</strong> permission under <em>Use Cases</em> in the Meta Developer Console.'
+                    : (errorMsg || 'Authorization was canceled or did not return an authorization code.')}
+                </p>
+
+                ${isEmailScopeError ? `
+                  <div class="steps-box">
+                    <strong>Quick 30-Second Fix in Meta Console:</strong>
+                    <ol>
+                      <li>Open <a href="https://developers.facebook.com/apps/1532121481550639/use-cases/" target="_blank" rel="noreferrer">Meta App 1532121481550639 Use Cases ↗</a></li>
+                      <li>Under <strong>Authentication and account creation</strong>, click <strong>Customize</strong> (or Permissions).</li>
+                      <li>Click <strong>Add</strong> next to <strong>email</strong>, then Save.</li>
+                    </ol>
+                  </div>
+                ` : ''}
+
+                <div class="token-box">
+                  <p style="font-size:12px; font-weight:700; color:#fff; margin-bottom:4px;">Or Connect Instantly with Graph API Token:</p>
+                  <p style="font-size:11px; margin-bottom:8px;">
+                    Generate a token in 1 click at <a href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639" target="_blank" style="color:#38bdf8;" rel="noreferrer">Meta Graph API Explorer ↗</a>
+                  </p>
+                  <input id="directMetaToken" class="token-input" placeholder="Paste Access Token (EAA...)" />
+                  <button id="connectTokenBtn" class="btn btn-primary" onclick="handleTokenBypass()">Connect Token & Scan Pages</button>
+                </div>
+
+                <div style="margin-top: 14px;">
+                  <a href="${origin}/settings" class="btn btn-secondary">Return to Settings</a>
+                </div>
               </div>
+
+              <script>
+                async function handleTokenBypass() {
+                  var token = document.getElementById('directMetaToken').value.trim();
+                  var btn = document.getElementById('connectTokenBtn');
+                  if (!token) {
+                    alert('Please paste a Meta access token first.');
+                    return;
+                  }
+                  btn.textContent = 'Validating token...';
+                  btn.disabled = true;
+                  try {
+                    var clientId = '${clientId || ''}';
+                    var res = await fetch('/api/social-accounts/meta-pages?clientId=' + encodeURIComponent(clientId) + '&accessToken=' + encodeURIComponent(token));
+                    var data = await res.json();
+                    if (data && data.success) {
+                      try {
+                        if (clientId) {
+                          localStorage.setItem('koko_active_ig_token_' + clientId, token);
+                          if (data.pages && data.pages.length > 0) {
+                            localStorage.setItem('koko_meta_available_pages_' + clientId, JSON.stringify(data.pages));
+                            var bestPage = data.pages.find(function(p){ return p.instagramBusinessAccount; }) || data.pages[0];
+                            if (bestPage) {
+                              var igUser = bestPage.instagramBusinessAccount ? bestPage.instagramBusinessAccount.username : null;
+                              var disp = igUser ? ('@' + igUser) : bestPage.name;
+                              var stored = localStorage.getItem('koko_connected_social_accounts');
+                              var list = stored ? JSON.parse(stored) : [];
+                              list = list.filter(function(a){ return !(a.clientId === clientId && a.platform === 'instagram'); });
+                              list.push({
+                                id: 'sa_' + clientId + '_instagram',
+                                clientId: clientId,
+                                platform: 'instagram',
+                                platformAccountId: disp,
+                                accessToken: bestPage.access_token || token,
+                                pageId: bestPage.id,
+                                pageName: bestPage.name,
+                                tokenExpiresAt: new Date(Date.now() + 60*24*60*60*1000).toISOString()
+                              });
+                              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(list));
+                              localStorage.setItem('koko_active_page_id_' + clientId, bestPage.id);
+                              localStorage.setItem('koko_active_page_name_' + clientId, bestPage.name);
+                              if (igUser) localStorage.setItem('koko_active_ig_username_' + clientId, igUser);
+                              if (bestPage.access_token) localStorage.setItem('koko_active_ig_token_' + clientId, bestPage.access_token);
+                            }
+                          }
+                        }
+                      } catch (stErr) {}
+
+                      btn.textContent = 'Connected! Redirecting...';
+                      if (window.opener) {
+                        try { window.opener.postMessage({ type: 'META_PAGE_SELECTED' }, '*'); } catch(e){}
+                        setTimeout(function(){ window.close(); }, 800);
+                      } else {
+                        window.location.href = '${origin}/settings';
+                      }
+                    } else {
+                      alert(data.error || 'Token validation failed. Please check permissions.');
+                      btn.textContent = 'Connect Token & Scan Pages';
+                      btn.disabled = false;
+                    }
+                  } catch (err) {
+                    alert('Error connecting token. Please check internet connection.');
+                    btn.textContent = 'Connect Token & Scan Pages';
+                    btn.disabled = false;
+                  }
+                }
+              </script>
             </body>
           </html>`,
           { headers: { 'Content-Type': 'text/html' } }

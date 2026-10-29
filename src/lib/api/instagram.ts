@@ -154,6 +154,7 @@ export async function fetchInstagramMetrics(
     if (postsList.length === 0) {
       let targetIgId = cleanAccountId;
       let targetToken = accessToken;
+      let linkedPage: any = null;
 
       try {
         const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
@@ -165,7 +166,6 @@ export async function fetchInstagramMetrics(
         });
 
         const pages = meAccountsRes.data?.data || [];
-        let linkedPage = null;
 
         if (targetPageId) {
           linkedPage = pages.find((p: any) => p.id === targetPageId || p.instagram_business_account?.id === targetPageId);
@@ -199,7 +199,50 @@ export async function fetchInstagramMetrics(
         }
       } catch (accErr) {}
 
-      if (targetIgId && targetIgId.length > 3) {
+      // Fallback 2A: Direct Page Query (in case accessToken is a Page Access Token where /me/accounts is not available)
+      if (!linkedPage && targetPageId) {
+        try {
+          const pageRes = await axios.get(`https://graph.facebook.com/v19.0/${targetPageId}`, {
+            params: {
+              fields: 'id,name,instagram_business_account{id,username,followers_count}',
+              access_token: targetToken,
+            },
+            timeout: 8000,
+          });
+          if (pageRes.data?.instagram_business_account?.id) {
+            targetIgId = pageRes.data.instagram_business_account.id;
+            if (pageRes.data.instagram_business_account.followers_count) {
+              followersGrowth = pageRes.data.instagram_business_account.followers_count;
+            }
+          }
+        } catch (pageErr) {}
+      }
+
+      // Fallback 2B: Query /me directly for Page or Instagram Business node
+      if (!linkedPage && (!targetIgId || !/^\d+$/.test(targetIgId))) {
+        try {
+          const meRes = await axios.get('https://graph.facebook.com/v19.0/me', {
+            params: {
+              fields: 'id,name,instagram_business_account{id,username,followers_count}',
+              access_token: targetToken,
+            },
+            timeout: 8000,
+          });
+          if (meRes.data?.instagram_business_account?.id) {
+            targetIgId = meRes.data.instagram_business_account.id;
+            if (meRes.data.instagram_business_account.followers_count) {
+              followersGrowth = meRes.data.instagram_business_account.followers_count;
+            }
+          } else if (meRes.data?.id) {
+            targetIgId = meRes.data.id;
+          }
+        } catch (meErr) {}
+      }
+
+      // Graph API media requires a numeric node ID or 'me'
+      const isValidGraphNode = targetIgId && (/^\d+$/.test(targetIgId) || targetIgId === 'me');
+
+      if (isValidGraphNode) {
         try {
           const mediaRes = await axios.get(`https://graph.facebook.com/v19.0/${targetIgId}/media`, {
             params: {

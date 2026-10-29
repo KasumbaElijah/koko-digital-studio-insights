@@ -119,6 +119,9 @@ export default function SettingsPage() {
     return '';
   });
   const [credentialsSaved, setCredentialsSaved] = useState(false);
+  const [metaDirectTokenInput, setMetaDirectTokenInput] = useState('');
+  const [isConnectingMetaToken, setIsConnectingMetaToken] = useState(false);
+  const [showTokenInput, setShowTokenInput] = useState(false);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || null;
 
@@ -494,13 +497,56 @@ export default function SettingsPage() {
     } catch (e) {}
   };
 
+  // Connect with raw Meta Access Token (User Token or Page Access Token)
+  const handleConnectWithMetaToken = async (tokenToUse?: string) => {
+    const rawToken = (tokenToUse || metaDirectTokenInput).trim();
+    if (!rawToken) {
+      alert('Please paste a valid Meta User Access Token or Page Access Token.');
+      return;
+    }
+    if (!selectedClientId) {
+      alert('Please select a client account first.');
+      return;
+    }
+    setIsConnectingMetaToken(true);
+    setScanNotice(null);
+    try {
+      const res = await axios.get(
+        `/api/social-accounts/meta-pages?clientId=${selectedClientId}&accessToken=${encodeURIComponent(rawToken)}`
+      );
+      if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
+        setAvailablePages(res.data.pages);
+        localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, rawToken);
+
+        const bestPage = res.data.pages.find((p: any) => p.instagramBusinessAccount) || res.data.pages[0];
+        if (bestPage) {
+          await handleSelectPage(bestPage);
+        }
+
+        setScanNotice({
+          type: 'success',
+          message: `Successfully connected Meta token! Discovered ${res.data.pages.length} managed Facebook Page(s). Live analytics synchronized.`,
+        });
+        setMetaDirectTokenInput('');
+        setShowTokenInput(false);
+      } else {
+        alert(res.data?.error || 'Could not find any Facebook Pages with this token. Please make sure the token has pages_show_list and instagram_basic permissions.');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || err.message || 'Error validating Meta token. Please verify the token is active and valid.');
+    } finally {
+      setIsConnectingMetaToken(false);
+    }
+  };
+
   // Fetch / Refresh available Meta Facebook Pages & Instagram accounts
-  const fetchAvailablePages = async (forceReauth: boolean = false) => {
+  const fetchAvailablePages = async (forceReauth: boolean = false, customToken?: string) => {
     if (!selectedClientId) return;
     setIsFetchingPages(true);
     setScanNotice(null);
 
-    let token = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
+    let token = customToken?.trim() || localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
     if (!token) {
       const stored = localStorage.getItem('koko_connected_social_accounts');
       if (stored) {
@@ -517,12 +563,18 @@ export default function SettingsPage() {
       token !== 'active_long_lived_token' &&
       token.length > 20;
 
-    if (!hasRealMetaToken || forceReauth) {
+    if (!hasRealMetaToken && !customToken) {
       setIsFetchingPages(false);
+      setShowTokenInput(true);
       setScanNotice({
         type: 'reauth',
-        message: 'To scan managed Facebook Pages & Instagram accounts, please connect with Facebook to grant Page permissions.',
+        message: 'To scan managed Facebook Pages & Instagram accounts, connect with Facebook or paste a Meta Access Token below.',
       });
+      return;
+    }
+
+    if (forceReauth) {
+      setIsFetchingPages(false);
       triggerMetaFacebookLogin(true, true);
       return;
     }
@@ -535,26 +587,30 @@ export default function SettingsPage() {
       if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
         setAvailablePages(res.data.pages);
         localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
+        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, token);
         setScanNotice({
           type: 'success',
           message: `Found ${res.data.pages.length} managed Facebook Page${res.data.pages.length > 1 ? 's' : ''}! Select your active channel below.`,
         });
       } else if (res.data?.needsReauth) {
+        setShowTokenInput(true);
         setScanNotice({
           type: 'reauth',
-          message: res.data?.error || 'A Meta Facebook login with Page permissions is required to scan pages.',
+          message: res.data?.error || 'A Meta Facebook login or active token with Page permissions is required to scan pages.',
         });
       } else {
+        setShowTokenInput(true);
         setScanNotice({
           type: 'reauth',
-          message: 'No managed Facebook Pages found under this Meta account. Make sure your Instagram business account is linked to a Facebook Page, or click below to re-authorize.',
+          message: 'No managed Facebook Pages found under this Meta account. Make sure your Instagram business account is linked to a Facebook Page, or paste an active access token below.',
         });
       }
     } catch (err: any) {
       console.warn('Notice fetching meta pages:', err);
+      setShowTokenInput(true);
       setScanNotice({
         type: 'reauth',
-        message: 'Unable to scan Pages with current session. Click below to reconnect with Facebook.',
+        message: 'Unable to scan Pages with current session. Paste an active Meta Access Token or reconnect with Facebook.',
       });
     } finally {
       setIsFetchingPages(false);
@@ -1415,27 +1471,85 @@ export default function SettingsPage() {
                           </div>
                         );
                       })}
-                      <button
-                        type="button"
-                        onClick={() => fetchAvailablePages(true)}
-                        disabled={isFetchingPages}
-                        className="w-full pt-1 text-center text-[10px] text-neutral-400 hover:text-emerald-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <RefreshCw className={`w-2.5 h-2.5 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                        Re-scan or Grant More Pages via Facebook
-                      </button>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => fetchAvailablePages(true)}
+                          disabled={isFetchingPages}
+                          className="flex-1 text-center text-[10px] text-neutral-400 hover:text-emerald-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                          Re-scan Facebook
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowTokenInput(!showTokenInput)}
+                          className="text-center text-[10px] text-sky-400 hover:text-sky-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Key className="w-2.5 h-2.5" />
+                          {showTokenInput ? 'Hide Token' : 'Enter Token'}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-xs text-neutral-400">
                       <p>Active channel: <strong className="text-white">{igAccount.platformAccountId}</strong>.</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => fetchAvailablePages(false)}
+                          disabled={isFetchingPages}
+                          className="text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                          {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowTokenInput(!showTokenInput)}
+                          className="text-sky-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Key className="w-3 h-3" />
+                          {showTokenInput ? 'Hide Token Input' : 'Enter Meta Token'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {showTokenInput && (
+                    <div className="p-3.5 rounded-xl bg-neutral-900/95 border border-neutral-700/80 space-y-2.5 text-left transition-all">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                          <Key className="w-3.5 h-3.5 text-emerald-400" />
+                          Connect with Meta Token (Bypass OAuth)
+                        </span>
+                        <a
+                          href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-sky-400 hover:text-sky-300 underline flex items-center gap-1 font-medium"
+                        >
+                          Graph Explorer ↗
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-neutral-400 leading-relaxed">
+                        Paste a User Token or Page Access Token from Meta to scan all your Pages and link your Instagram account immediately.
+                      </p>
+                      <input
+                        type="text"
+                        value={metaDirectTokenInput}
+                        onChange={(e) => setMetaDirectTokenInput(e.target.value)}
+                        placeholder="Paste Meta Token (EAA...)"
+                        className="w-full bg-black text-white placeholder-neutral-500 text-xs rounded-lg px-3 py-2 border border-neutral-800 focus:border-emerald-500 outline-none"
+                      />
                       <button
                         type="button"
-                        onClick={() => fetchAvailablePages(false)}
-                        disabled={isFetchingPages}
-                        className="mt-1.5 text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        disabled={isConnectingMetaToken || !metaDirectTokenInput.trim()}
+                        onClick={() => handleConnectWithMetaToken()}
+                        className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                       >
-                        <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                        {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
+                        <RefreshCw className={`w-3 h-3 ${isConnectingMetaToken ? 'animate-spin' : ''}`} />
+                        {isConnectingMetaToken ? 'Validating Token & Scanning...' : 'Scan & Link Pages with Token'}
                       </button>
                     </div>
                   )}
@@ -1577,6 +1691,46 @@ export default function SettingsPage() {
                       </>
                     )}
                   </button>
+
+                  {/* OR Direct Meta Token Input */}
+                  <div className="flex items-center my-2">
+                    <div className="flex-grow border-t border-neutral-800" />
+                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR META ACCESS TOKEN</span>
+                    <div className="flex-grow border-t border-neutral-800" />
+                  </div>
+
+                  <div className="p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl space-y-2 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-neutral-300 flex items-center gap-1">
+                        <Key className="w-3 h-3 text-emerald-400" />
+                        Direct Token Bypass
+                      </span>
+                      <a
+                        href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] text-sky-400 hover:text-sky-300 underline flex items-center gap-0.5"
+                      >
+                        Graph Explorer ↗
+                      </a>
+                    </div>
+                    <input
+                      type="text"
+                      value={metaDirectTokenInput}
+                      onChange={(e) => setMetaDirectTokenInput(e.target.value)}
+                      placeholder="Paste User Token or Page Token (EAA...)"
+                      className="w-full bg-black/60 text-white placeholder-neutral-500 text-xs rounded-lg px-3 py-2 border border-neutral-800 focus:border-emerald-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={isConnectingMetaToken || !metaDirectTokenInput.trim()}
+                      onClick={() => handleConnectWithMetaToken()}
+                      className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isConnectingMetaToken ? 'animate-spin' : ''}`} />
+                      {isConnectingMetaToken ? 'Validating Token...' : 'Connect with Meta Token'}
+                    </button>
+                  </div>
 
                   <p className="text-[10px] text-center text-neutral-500">
                     Note: If Meta login times out on your ISP, turn on a VPN (or Cloudflare 1.1.1.1) to unblock Facebook.
