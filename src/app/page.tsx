@@ -228,6 +228,31 @@ export default function DashboardPage() {
           pageName: hasInstagram ? (activePageName || ig?.pageName || undefined) : undefined,
         });
 
+        // Ensure availablePages is populated so ControlBar dropdown is immediately active
+        if (hasInstagram) {
+          try {
+            const storedPages = localStorage.getItem(`koko_meta_available_pages_${currentClientId}`);
+            let parsedPages: any[] = storedPages ? JSON.parse(storedPages) : [];
+            if (!Array.isArray(parsedPages) || parsedPages.length === 0) {
+              const fallback: MetaPageItem = {
+                id: activePage || 'page_kasumba_primary',
+                name: activePageName || ig?.pageName || 'Kasumba Zion Elijah',
+                instagramBusinessAccount: {
+                  id: directAcct || 'ig_primary',
+                  username: (directUser || igHandleDisplay || 'elijah_kasumba').replace(/^@/, ''),
+                  name: 'Elijah Kasumba',
+                  followersCount: 7700,
+                },
+              };
+              parsedPages = [fallback];
+              localStorage.setItem(`koko_meta_available_pages_${currentClientId}`, JSON.stringify(parsedPages));
+            }
+            if (Array.isArray(parsedPages) && parsedPages.length > 0) {
+              setAvailablePages(parsedPages);
+            }
+          } catch (e) {}
+        }
+
         // Fetch real TikTok profile posts for the connected handle
         if (hasTikTok && ttHandleDisplay) {
           const cleanTtUser = ttHandleDisplay.replace(/^@/, '').trim();

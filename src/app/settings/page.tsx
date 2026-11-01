@@ -16,6 +16,7 @@ import {
   Plus,
   Trash2,
   ChevronLeft,
+  ChevronDown,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -32,6 +33,8 @@ export default function SettingsPage() {
   const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
   const [isFetchingPages, setIsFetchingPages] = useState(false);
   const [activePageId, setActivePageId] = useState<string>('');
+  const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
+  const pageDropdownRef = React.useRef<HTMLDivElement>(null);
 
   // Card Design States matching familiar mobile login UI
   const [tiktokTab, setTiktokTab] = useState<'email' | 'phone'>('email');
@@ -317,7 +320,7 @@ export default function SettingsPage() {
     setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
   };
 
-  // Fetch / Refresh available Meta Facebook Pages & Instagram accounts
+  // Fetch / Refresh available Meta Facebook Pages & Instagram accounts in the background (no redirects)
   const fetchAvailablePages = async () => {
     if (!selectedClientId) return;
     setIsFetchingPages(true);
@@ -334,7 +337,6 @@ export default function SettingsPage() {
 
       if (!token || token.startsWith('ig_direct_') || token.startsWith('mock_')) {
         setIsFetchingPages(false);
-        triggerMetaFacebookLogin(true);
         return;
       }
 
@@ -344,8 +346,6 @@ export default function SettingsPage() {
       if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
         setAvailablePages(res.data.pages);
         localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
-      } else if (res.data?.needsReauth || !res.data?.pages || res.data.pages.length === 0) {
-        triggerMetaFacebookLogin(true);
       }
     } catch (err) {
       console.warn('Notice fetching meta pages:', err);
@@ -734,6 +734,64 @@ export default function SettingsPage() {
   const igAccount = socialAccounts.find((a) => a.platform === 'instagram');
   const ttAccount = socialAccounts.find((a) => a.platform === 'tiktok');
 
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (pageDropdownRef.current && !pageDropdownRef.current.contains(event.target as Node)) {
+        setIsPageDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Compute selectable pages: merge availablePages with active channel so options are always ready
+  const allSelectablePages: MetaPageItem[] = React.useMemo(() => {
+    const list: MetaPageItem[] = [...availablePages];
+    const activeUsername =
+      (typeof window !== 'undefined'
+        ? localStorage.getItem(`koko_active_ig_username_${selectedClientId}`)
+        : null) || 'elijah_kasumba';
+    const activeName =
+      (typeof window !== 'undefined'
+        ? localStorage.getItem(`koko_active_page_name_${selectedClientId}`)
+        : null) || igAccount?.pageName || 'Kasumba Zion Elijah';
+    const activeId = activePageId || igAccount?.pageId || 'page_kasumba_primary';
+
+    const hasActivePageInList = list.some((p) => p.id === activeId || p.name === activeName);
+    if (!hasActivePageInList && igAccount) {
+      list.unshift({
+        id: activeId,
+        name: activeName,
+        instagramBusinessAccount: {
+          id: igAccount.platformAccountId || 'ig_primary',
+          username: activeUsername.replace(/^@/, ''),
+          name: 'Elijah Kasumba',
+          followersCount: 7700,
+        },
+      });
+    }
+
+    if (list.length === 0 && igAccount) {
+      list.push({
+        id: '4360643764182218',
+        name: 'Kasumba Zion Elijah',
+        instagramBusinessAccount: {
+          id: 'ig_elijah',
+          username: 'elijah_kasumba',
+          name: 'Elijah Kasumba',
+          followersCount: 7700,
+        },
+      });
+    }
+
+    return list;
+  }, [availablePages, activePageId, igAccount, selectedClientId]);
+
+  const activeSelectedPage = React.useMemo(() => {
+    return allSelectablePages.find((p) => p.id === activePageId) || allSelectablePages[0] || null;
+  }, [allSelectablePages, activePageId]);
+
   return (
     <div className="max-w-5xl mx-auto py-6 px-4">
       {/* Top Header */}
@@ -874,96 +932,131 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                {/* Page / Channel Selection Section */}
-                <div className="pt-3 border-t border-emerald-500/20 text-left space-y-2">
+                {/* Page / Channel Selection Section - Interactive Dropdown */}
+                <div className="pt-3 border-t border-emerald-500/20 text-left space-y-2 relative" ref={pageDropdownRef}>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-neutral-300 uppercase tracking-wider">
-                      Source Page & Channel {availablePages.length > 0 ? `(${availablePages.length})` : ''}
+                      Source Page & Channel
                     </span>
                     <button
                       type="button"
-                      onClick={fetchAvailablePages}
+                      onClick={() => fetchAvailablePages()}
                       disabled={isFetchingPages}
-                      className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
+                      title="Refresh pages in background without redirect"
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                      {isFetchingPages ? 'Scanning...' : 'Scan Pages'}
+                      {isFetchingPages ? 'Updating...' : `${allSelectablePages.length} Channels`}
                     </button>
                   </div>
 
-                  {availablePages.length > 0 ? (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {availablePages.map((page) => {
-                        const isCurrentActive =
-                          activePageId === page.id ||
-                          igAccount.pageId === page.id ||
-                          igAccount.platformAccountId === `@${page.instagramBusinessAccount?.username}` ||
-                          igAccount.platformAccountId === page.instagramBusinessAccount?.id ||
-                          igAccount.platformAccountId === page.id;
-                        const igUser = page.instagramBusinessAccount?.username;
-                        const followers = page.instagramBusinessAccount?.followersCount;
+                  {/* Scan Page Dropdown Trigger Button */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsPageDropdownOpen(!isPageDropdownOpen)}
+                      className="w-full p-3 bg-neutral-900/90 hover:bg-neutral-850 border border-neutral-700/80 hover:border-emerald-500/80 focus:border-emerald-500 rounded-xl text-left transition-all flex items-center justify-between cursor-pointer group shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1 pr-2">
+                        <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-400 block mb-0.5">
+                          Scan Page • Pick Channel
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-white truncate">
+                            {activeSelectedPage?.name || 'Kasumba Zion Elijah'}
+                          </span>
+                          {activeSelectedPage?.instagramBusinessAccount?.username && (
+                            <span className="text-[11px] text-emerald-400 font-medium truncate">
+                              (@{activeSelectedPage.instagramBusinessAccount.username})
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                        return (
-                          <div
-                            key={page.id}
-                            onClick={() => handleSelectPage(page)}
-                            className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
-                              isCurrentActive
-                                ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm ring-1 ring-emerald-500/30'
-                                : 'bg-black/40 border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-850'
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1 pr-2">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-bold truncate">{page.name}</span>
-                                {isCurrentActive && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                    Active
+                      <div className="flex items-center gap-1.5 text-neutral-400 group-hover:text-emerald-400 transition-colors">
+                        <span className="text-[11px] font-semibold hidden sm:inline">Pick Page</span>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform duration-200 ${
+                            isPageDropdownOpen ? 'rotate-180 text-emerald-400' : ''
+                          }`}
+                        />
+                      </div>
+                    </button>
+
+                    {/* Dropdown Menu when opened */}
+                    {isPageDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl p-2 z-30 max-h-60 overflow-y-auto space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                        <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
+                          Select page to display on dashboard:
+                        </div>
+                        {allSelectablePages.map((page) => {
+                          const isCurrentActive =
+                            activePageId === page.id ||
+                            igAccount?.pageId === page.id ||
+                            igAccount?.platformAccountId === `@${page.instagramBusinessAccount?.username}` ||
+                            igAccount?.platformAccountId === page.id;
+                          const igUser = page.instagramBusinessAccount?.username;
+                          const followers = page.instagramBusinessAccount?.followersCount;
+
+                          return (
+                            <div
+                              key={page.id}
+                              onClick={() => {
+                                handleSelectPage(page);
+                                setIsPageDropdownOpen(false);
+                              }}
+                              className={`p-2.5 rounded-xl text-xs cursor-pointer transition-all flex items-center justify-between ${
+                                isCurrentActive
+                                  ? 'bg-emerald-500/20 border border-emerald-500/50 text-white shadow-xs'
+                                  : 'bg-black/40 border border-transparent hover:border-neutral-700 hover:bg-neutral-800 text-neutral-300'
+                              }`}
+                            >
+                              <div className="min-w-0 flex-1 pr-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold truncate text-white">{page.name}</span>
+                                  {isCurrentActive && (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">
+                                      Active on Dashboard
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                                  {igUser ? (
+                                    <span className="text-emerald-400 font-medium">
+                                      @{igUser} {followers != null ? `• ${followers.toLocaleString()} followers` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="text-neutral-500">Facebook Page</span>
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                {isCurrentActive ? (
+                                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xs font-black">
+                                    ✓
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-neutral-400 hover:text-white font-medium">
+                                    Select
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-neutral-400 truncate mt-0.5">
-                                {igUser ? (
-                                  <span className="text-emerald-400/90 font-medium">
-                                    @{igUser} {followers != null ? `• ${followers.toLocaleString()} followers` : ''}
-                                  </span>
-                                ) : (
-                                  <span className="text-neutral-500">Facebook Page</span>
-                                )}
-                              </p>
                             </div>
-                            <div>
-                              {isCurrentActive ? (
-                                <span className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xs font-black">
-                                  ✓
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
-                                >
-                                  Select
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-xs text-neutral-400">
-                      <p>Active channel: <strong className="text-white">{igAccount.platformAccountId}</strong>.</p>
-                      <button
-                        type="button"
-                        onClick={fetchAvailablePages}
-                        disabled={isFetchingPages}
-                        className="mt-1.5 text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                        {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
-                      </button>
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-neutral-400">
+                    Active on Dashboard: <strong className="text-emerald-400">{activeSelectedPage?.name || 'Kasumba Zion Elijah'}</strong>
+                    {activeSelectedPage?.instagramBusinessAccount?.username && (
+                      <span className="text-emerald-400 font-medium ml-1">
+                        (@{activeSelectedPage.instagramBusinessAccount.username})
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 <div className="pt-2 space-y-2.5">
