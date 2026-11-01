@@ -568,8 +568,9 @@ export default function SettingsPage() {
       setShowTokenInput(true);
       setScanNotice({
         type: 'reauth',
-        message: 'To scan managed Facebook Pages & Instagram accounts, connect with Facebook or paste a Meta Access Token below.',
+        message: 'Opening Meta Login to grant Page permissions and scan your accounts...',
       });
+      triggerMetaFacebookLogin(true, true);
       return;
     }
 
@@ -1106,9 +1107,8 @@ export default function SettingsPage() {
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
     const state = encodeURIComponent(selectedClientId);
     const rerequestParam = rerequest ? '&auth_type=rerequest' : '';
-    // Verified scopes: instagram_basic, instagram_manage_insights, pages_show_list, pages_read_engagement
-    // Note: 'email' is strictly omitted because it causes Meta OAuth error 'Invalid Scopes: email'
-    const scopes = 'instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement';
+    // Scopes updated to match configured Meta app permissions (including email and pages_read_engagement)
+    const scopes = 'public_profile,email,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights';
     
     const oauthUrl = configId
       ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup${rerequestParam}`
