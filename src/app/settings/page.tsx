@@ -19,41 +19,19 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { INITIAL_CLIENTS } from '@/lib/mockData';
 import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_selected_client_id');
-      if (saved) return saved;
-      const match = document.cookie.match(/koko_selected_client_id=([^;]+)/);
-      if (match) return decodeURIComponent(match[1].trim());
-    }
-    return '';
-  });
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isOpeningLogin, setIsOpeningLogin] = useState<string | null>(null);
-
-  // Helper to persist selected client across reloads and routes
-  const handleSelectClient = (clientId: string) => {
-    setSelectedClientId(clientId);
-    if (typeof window !== 'undefined' && clientId) {
-      try {
-        localStorage.setItem('koko_selected_client_id', clientId);
-        document.cookie = `koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=31536000; SameSite=Lax`;
-      } catch (e) {}
-    }
-  };
 
   // Meta Pages selection state
   const [availablePages, setAvailablePages] = useState<MetaPageItem[]>([]);
   const [isFetchingPages, setIsFetchingPages] = useState(false);
   const [activePageId, setActivePageId] = useState<string>('');
-  const [scanNotice, setScanNotice] = useState<{ type: 'success' | 'info' | 'reauth' | 'error'; message: string } | null>(null);
 
   // Card Design States matching familiar mobile login UI
   const [tiktokTab, setTiktokTab] = useState<'email' | 'phone'>('email');
@@ -72,154 +50,29 @@ export default function SettingsPage() {
   const [newClientName, setNewClientName] = useState('');
   const [newClientLogo, setNewClientLogo] = useState('');
 
-  // Meta & TikTok Developer Portal Inputs (with localStorage persistence)
-  const [metaAppId, setMetaAppId] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_meta_app_id');
-      if (saved === '1762099978384335') {
-        localStorage.removeItem('koko_meta_app_id');
-      } else if (saved && saved.length > 5) {
-        return saved;
-      }
-    }
-    const envAppId = (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '').replace(/['"\s]/g, '');
-    if (envAppId && envAppId !== '1762099978384335' && envAppId.length > 5) return envAppId;
-    return '1532121481550639';
-  });
-  const [metaAppSecret, setMetaAppSecret] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_meta_app_secret');
-      if (saved) return saved;
-    }
-    return '';
-  });
-  const [configIdInput, setConfigIdInput] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_meta_config_id');
-      if (saved && saved !== '1590313085890812') return saved;
-      try {
-        localStorage.removeItem('koko_meta_config_id');
-      } catch (e) {}
-    }
-    const envConfig = process.env.NEXT_PUBLIC_INSTAGRAM_CONFIG_ID || '';
-    return envConfig !== '1590313085890812' ? envConfig : '';
-  });
-  const [tiktokClientKey, setTiktokClientKey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_tiktok_client_key');
-      if (saved) return saved;
-    }
-    return process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
-  });
-  const [tiktokClientSecret, setTiktokClientSecret] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('koko_tiktok_client_secret');
-      if (saved) return saved;
-    }
-    return '';
-  });
-  const [credentialsSaved, setCredentialsSaved] = useState(false);
-  const [metaDirectTokenInput, setMetaDirectTokenInput] = useState('');
-  const [isConnectingMetaToken, setIsConnectingMetaToken] = useState(false);
-  const [showTokenInput, setShowTokenInput] = useState(false);
+  // Meta & TikTok App Credentials
+  const [metaAppId, setMetaAppId] = useState('1532121481550639');
+  const [tiktokClientKey, setTiktokClientKey] = useState(
+    process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009'
+  );
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0] || null;
 
-  // Helper to open centered modal popup window directly over dashboard with instant visual response
+  // Helper to open centered modal popup window directly over dashboard
   const openCenteredPopup = (url: string, title: string) => {
     const width = 580;
-    const height = 700;
-    const left = typeof window !== 'undefined' ? Math.max(0, window.screenX + (window.outerWidth - width) / 2) : 100;
-    const top = typeof window !== 'undefined' ? Math.max(0, window.screenY + (window.outerHeight - height) / 2) : 100;
-
-    // Immediately open about:blank synchronously within user click event to bypass popup blockers and network lag
-    const popup = window.open(
-      'about:blank',
+    const height = 690;
+    const left = typeof window !== 'undefined' ? window.screenX + (window.outerWidth - width) / 2 : 100;
+    const top = typeof window !== 'undefined' ? window.screenY + (window.outerHeight - height) / 2 : 100;
+    window.open(
+      url,
       title,
-      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes,status=no,toolbar=no,menubar=no`
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
     );
-
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      // If popup blocker blocked the window, fallback to navigating current tab directly
-      window.location.href = url;
-      return;
-    }
-
-    try {
-      popup.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Opening Secure Login...</title>
-            <style>
-              * { box-sizing: border-box; }
-              body {
-                background: #0a0a0a;
-                color: #ffffff;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                margin: 0;
-                padding: 24px;
-                text-align: center;
-              }
-              .spinner {
-                width: 44px;
-                height: 44px;
-                border: 3.5px solid rgba(255, 255, 255, 0.12);
-                border-top-color: #a8256b;
-                border-right-color: #692795;
-                border-radius: 50%;
-                animation: spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-                margin-bottom: 20px;
-              }
-              @keyframes spin {
-                to { transform: rotate(360deg); }
-              }
-              h3 {
-                font-size: 17px;
-                font-weight: 700;
-                margin: 0 0 6px;
-                color: #f5f5f5;
-              }
-              p {
-                font-size: 13px;
-                color: #888888;
-                margin: 0;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="spinner"></div>
-            <h3>Connecting to Secure Login...</h3>
-            <p>Please wait while we open the authorization dialog.</p>
-          </body>
-        </html>
-      `);
-      popup.document.close();
-    } catch (e) {}
-
-    // Focus immediately so the popup is in front of the browser window
-    try {
-      popup.focus();
-    } catch (e) {}
-
-    // Instantly navigate the popup to the OAuth URL
-    try {
-      popup.location.replace(url);
-    } catch (e) {
-      popup.location.href = url;
-    }
   };
 
   // Helper to load clients from API + localStorage
   const loadClientsList = async () => {
-    // 1. Maintain set of deleted client IDs (automatically purges legacy mock defaults)
     let deletedIds: string[] = ['client-bulungi-town', 'client-safi-bay'];
     try {
       const storedDeleted = localStorage.getItem('koko_deleted_client_ids');
@@ -250,7 +103,6 @@ export default function SettingsPage() {
       if (localCustom) {
         const parsed: ClientData[] = JSON.parse(localCustom);
         const validCustom = parsed.filter((c) => !deletedSet.has(c.id));
-        // Overwrite localStorage with purged list
         localStorage.setItem('koko_custom_clients', JSON.stringify(validCustom));
 
         const existingIds = new Set(baseClients.map((c) => c.id));
@@ -263,23 +115,12 @@ export default function SettingsPage() {
 
     setClients(baseClients);
 
-    // Synchronize selected client ID with persistence
+    // Synchronize selected client ID
     setSelectedClientId((prev) => {
       if (prev && baseClients.some((c) => c.id === prev)) {
         return prev;
       }
-      const saved = typeof window !== 'undefined' ? localStorage.getItem('koko_selected_client_id') : null;
-      if (saved && baseClients.some((c) => c.id === saved)) {
-        return saved;
-      }
-      const firstId = baseClients[0]?.id || '';
-      if (firstId && typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('koko_selected_client_id', firstId);
-          document.cookie = `koko_selected_client_id=${encodeURIComponent(firstId)}; path=/; max-age=31536000; SameSite=Lax`;
-        } catch (e) {}
-      }
-      return firstId;
+      return baseClients[0]?.id || '';
     });
   };
 
@@ -291,9 +132,9 @@ export default function SettingsPage() {
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.data && event.data.type === 'META_AUTH_SUCCESS') {
-        const { accountId, username, accessToken, clientId } = event.data;
+        const { accountId, username, accessToken, clientId, pageId, pageName, pages } = event.data;
         const targetClientId = clientId || selectedClientId;
-        const displayAcct = username ? `@${username}` : accountId;
+        const displayAcct = username ? `@${username}` : (pageName || accountId);
 
         const newAccount: SocialAccountData = {
           id: `sa_${targetClientId}_instagram`,
@@ -301,6 +142,8 @@ export default function SettingsPage() {
           platform: 'instagram',
           platformAccountId: displayAcct,
           accessToken: accessToken || 'active_long_lived_token',
+          pageId: pageId || '',
+          pageName: pageName || '',
           tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         };
 
@@ -314,6 +157,17 @@ export default function SettingsPage() {
           localStorage.setItem(`koko_active_ig_account_${targetClientId}`, accountId || '');
           if (username) {
             localStorage.setItem(`koko_active_ig_username_${targetClientId}`, username);
+          }
+          if (pageId) {
+            localStorage.setItem(`koko_active_page_id_${targetClientId}`, pageId);
+            setActivePageId(pageId);
+          }
+          if (pageName) {
+            localStorage.setItem(`koko_active_page_name_${targetClientId}`, pageName);
+          }
+          if (pages && Array.isArray(pages)) {
+            setAvailablePages(pages);
+            localStorage.setItem(`koko_meta_available_pages_${targetClientId}`, JSON.stringify(pages));
           }
         } catch (e) {}
 
@@ -369,11 +223,13 @@ export default function SettingsPage() {
       const account = params.get('account');
       const username = params.get('username');
       const token = params.get('token');
+      const pageId = params.get('pageId');
+      const pageName = params.get('pageName');
       const paramClientId = params.get('clientId');
 
       if ((connected === 'instagram' || connected === 'tiktok') && account) {
         const targetClientId = paramClientId || selectedClientId;
-        let displayAccountId = username ? `@${username}` : account;
+        let displayAccountId = username ? `@${username}` : (pageName || account);
         try {
           const savedUsername = localStorage.getItem(`koko_pending_username_${targetClientId}_${connected}`);
           if (savedUsername && account.includes('official')) {
@@ -387,10 +243,11 @@ export default function SettingsPage() {
           platform: connected,
           platformAccountId: displayAccountId,
           accessToken: token || 'active_long_lived_token',
+          pageId: pageId || '',
+          pageName: pageName || '',
           tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         };
 
-        // Save to browser localStorage
         try {
           const stored = localStorage.getItem('koko_connected_social_accounts');
           const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
@@ -403,25 +260,28 @@ export default function SettingsPage() {
             if (username) {
               localStorage.setItem(`koko_active_ig_username_${targetClientId}`, username);
             }
-          }
-          if (token && connected === 'tiktok') {
-            localStorage.setItem(`koko_active_tt_token_${targetClientId}`, token);
-            localStorage.setItem(`koko_active_tt_account_${targetClientId}`, displayAccountId);
-            if (username) {
-              localStorage.setItem(`koko_active_tt_username_${targetClientId}`, username);
+            if (pageId) {
+              localStorage.setItem(`koko_active_page_id_${targetClientId}`, pageId);
+              setActivePageId(pageId);
+            }
+            if (pageName) {
+              localStorage.setItem(`koko_active_page_name_${targetClientId}`, pageName);
+            }
+            const storedPages = localStorage.getItem(`koko_meta_available_pages_${targetClientId}`);
+            if (storedPages) {
+              const parsed = JSON.parse(storedPages);
+              if (Array.isArray(parsed)) setAvailablePages(parsed);
             }
           }
         } catch (e) {
           console.warn('LocalStorage save error:', e);
         }
 
-        // Update local component state
         setSocialAccounts((prev) => {
           const filtered = prev.filter((a) => !(a.clientId === targetClientId && a.platform === connected));
           return [...filtered, newAccount];
         });
 
-        // Clean query parameters from URL without reloading
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     } catch (e) {
@@ -430,7 +290,7 @@ export default function SettingsPage() {
   }, [selectedClientId]);
 
   // Disconnect social account
-  const handleDisconnectAccount = async (platform: string) => {
+  const handleDisconnectAccount = (platform: string) => {
     try {
       const stored = localStorage.getItem('koko_connected_social_accounts');
       if (stored) {
@@ -445,174 +305,50 @@ export default function SettingsPage() {
         localStorage.removeItem(`koko_meta_available_pages_${selectedClientId}`);
         localStorage.removeItem(`koko_active_page_id_${selectedClientId}`);
         localStorage.removeItem(`koko_active_page_name_${selectedClientId}`);
-        document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         setAvailablePages([]);
         setActivePageId('');
       }
       if (platform === 'tiktok') {
         localStorage.removeItem(`koko_active_tt_token_${selectedClientId}`);
         localStorage.removeItem(`koko_active_tt_account_${selectedClientId}`);
-        localStorage.removeItem(`koko_active_tt_username_${selectedClientId}`);
-        document.cookie = `koko_session_tt_connected_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_tt_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_active_tt_token_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_tt_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        document.cookie = `koko_session_tt_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       }
-
-      // Filter out posts from disconnected platform from cached report
-      try {
-        const cachedReportStr = localStorage.getItem(`koko_report_${selectedClientId}`);
-        if (cachedReportStr) {
-          const parsedReport = JSON.parse(cachedReportStr);
-          if (Array.isArray(parsedReport.posts)) {
-            parsedReport.posts = parsedReport.posts.filter((p: any) => String(p.platform || '').toLowerCase() !== platform.toLowerCase());
-          }
-          if (platform === 'tiktok') {
-            parsedReport.ttViews = 0;
-            parsedReport.ttFollowersGrowth = 0;
-            parsedReport.ttEngagementRate = 0;
-            parsedReport.ttViewsPctChange = 0;
-          }
-          if (platform === 'instagram') {
-            parsedReport.igViews = 0;
-            parsedReport.igFollowersGrowth = 0;
-            parsedReport.igEngagementRate = 0;
-            parsedReport.igViewsPctChange = 0;
-          }
-          localStorage.setItem(`koko_report_${selectedClientId}`, JSON.stringify(parsedReport));
-          localStorage.setItem(`koko_posts_${selectedClientId}`, JSON.stringify(parsedReport.posts || []));
-        }
-      } catch (e) {}
     } catch (e) {}
 
     setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
-
-    try {
-      await axios.delete(`/api/social-accounts?id=sa_${selectedClientId}_${platform}`);
-    } catch (e) {}
-  };
-
-  // Connect with raw Meta Access Token (User Token or Page Access Token)
-  const handleConnectWithMetaToken = async (tokenToUse?: string) => {
-    const rawToken = (tokenToUse || metaDirectTokenInput).trim();
-    if (!rawToken) {
-      alert('Please paste a valid Meta User Access Token or Page Access Token.');
-      return;
-    }
-    if (!selectedClientId) {
-      alert('Please select a client account first.');
-      return;
-    }
-    setIsConnectingMetaToken(true);
-    setScanNotice(null);
-    try {
-      const res = await axios.get(
-        `/api/social-accounts/meta-pages?clientId=${selectedClientId}&accessToken=${encodeURIComponent(rawToken)}`
-      );
-      if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
-        setAvailablePages(res.data.pages);
-        localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
-        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, rawToken);
-
-        const bestPage = res.data.pages.find((p: any) => p.instagramBusinessAccount) || res.data.pages[0];
-        if (bestPage) {
-          await handleSelectPage(bestPage);
-        }
-
-        setScanNotice({
-          type: 'success',
-          message: `Successfully connected Meta token! Discovered ${res.data.pages.length} managed Facebook Page(s). Live analytics synchronized.`,
-        });
-        setMetaDirectTokenInput('');
-        setShowTokenInput(false);
-      } else {
-        alert(res.data?.error || 'Could not find any Facebook Pages with this token. Please make sure the token has pages_show_list and instagram_basic permissions.');
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || err.message || 'Error validating Meta token. Please verify the token is active and valid.');
-    } finally {
-      setIsConnectingMetaToken(false);
-    }
   };
 
   // Fetch / Refresh available Meta Facebook Pages & Instagram accounts
-  const fetchAvailablePages = async (forceReauth: boolean = false, customToken?: string) => {
+  const fetchAvailablePages = async () => {
     if (!selectedClientId) return;
     setIsFetchingPages(true);
-    setScanNotice(null);
-
-    let token = customToken?.trim() || localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
-    if (!token) {
-      const stored = localStorage.getItem('koko_connected_social_accounts');
-      if (stored) {
-        const list: SocialAccountData[] = JSON.parse(stored);
-        const ig = list.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
-        if (ig && ig.accessToken) token = ig.accessToken;
-      }
-    }
-
-    const hasRealMetaToken =
-      Boolean(token) &&
-      !token.startsWith('ig_direct_') &&
-      !token.startsWith('mock_') &&
-      token !== 'active_long_lived_token' &&
-      token.length > 20;
-
-    if (!hasRealMetaToken && !customToken) {
-      setIsFetchingPages(false);
-      setShowTokenInput(true);
-      setScanNotice({
-        type: 'reauth',
-        message: 'Opening Meta Login to grant Page permissions and scan your accounts...',
-      });
-      triggerMetaFacebookLogin(true, true);
-      return;
-    }
-
-    if (forceReauth) {
-      setIsFetchingPages(false);
-      triggerMetaFacebookLogin(true, true);
-      return;
-    }
-
     try {
-      const res = await axios.get(
-        `/api/social-accounts/meta-pages?clientId=${selectedClientId}&accessToken=${encodeURIComponent(token)}`
-      );
+      let token = localStorage.getItem(`koko_active_ig_token_${selectedClientId}`) || '';
+      if (!token) {
+        const stored = localStorage.getItem('koko_connected_social_accounts');
+        if (stored) {
+          const list: SocialAccountData[] = JSON.parse(stored);
+          const ig = list.find((a) => a.clientId === selectedClientId && a.platform === 'instagram');
+          if (ig && ig.accessToken) token = ig.accessToken;
+        }
+      }
 
+      if (!token || token.startsWith('ig_direct_') || token.startsWith('mock_')) {
+        setIsFetchingPages(false);
+        triggerMetaFacebookLogin(true);
+        return;
+      }
+
+      const res = await axios.get(
+        `/api/social-accounts/meta-pages?clientId=${selectedClientId}${token ? `&accessToken=${encodeURIComponent(token)}` : ''}`
+      );
       if (res.data?.success && Array.isArray(res.data?.pages) && res.data.pages.length > 0) {
         setAvailablePages(res.data.pages);
         localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(res.data.pages));
-        localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, token);
-        setScanNotice({
-          type: 'success',
-          message: `Found ${res.data.pages.length} managed Facebook Page${res.data.pages.length > 1 ? 's' : ''}! Select your active channel below.`,
-        });
-      } else if (res.data?.needsReauth) {
-        setShowTokenInput(true);
-        setScanNotice({
-          type: 'reauth',
-          message: res.data?.error || 'A Meta Facebook login or active token with Page permissions is required to scan pages.',
-        });
-      } else {
-        setShowTokenInput(true);
-        setScanNotice({
-          type: 'reauth',
-          message: 'No managed Facebook Pages found under this Meta account. Make sure your Instagram business account is linked to a Facebook Page, or paste an active access token below.',
-        });
+      } else if (res.data?.needsReauth || !res.data?.pages || res.data.pages.length === 0) {
+        triggerMetaFacebookLogin(true);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.warn('Notice fetching meta pages:', err);
-      setShowTokenInput(true);
-      setScanNotice({
-        type: 'reauth',
-        message: 'Unable to scan Pages with current session. Paste an active Meta Access Token or reconnect with Facebook.',
-      });
     } finally {
       setIsFetchingPages(false);
     }
@@ -653,18 +389,11 @@ export default function SettingsPage() {
       }
       if (page.access_token) {
         localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, page.access_token);
-        document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(page.access_token)}; path=/; max-age=31536000; SameSite=Lax`;
       }
-      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayAcct)}; path=/; max-age=31536000; SameSite=Lax`;
 
       setSocialAccounts((prev) => {
         const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
         return [...filtered, newAccount];
-      });
-
-      setScanNotice({
-        type: 'success',
-        message: `Active channel switched to ${displayAcct}! Live analytics synchronized.`,
       });
     } catch (e) {
       console.warn('LocalStorage save error on page select:', e);
@@ -679,13 +408,6 @@ export default function SettingsPage() {
         instagramId,
         instagramUsername,
       });
-
-      // Synchronize live analytics immediately for the newly selected Page
-      axios.post('/api/sync', {
-        clientId: selectedClientId,
-        platform: 'instagram',
-        pageId: page.id,
-      }).catch(() => {});
     } catch (apiErr) {
       console.warn('API meta-pages switch notice:', apiErr);
     }
@@ -778,7 +500,6 @@ export default function SettingsPage() {
       console.warn('POST /api/clients fallback to localStorage:', err);
     }
 
-    // Save to localStorage and ensure it's removed from deleted list
     try {
       const localCustom = localStorage.getItem('koko_custom_clients');
       const currentList: ClientData[] = localCustom ? JSON.parse(localCustom) : [];
@@ -810,7 +531,6 @@ export default function SettingsPage() {
   const handleDeleteClient = async (clientId: string) => {
     if (!confirm('Are you sure you want to remove this client account?')) return;
 
-    // 1. Record ID in koko_deleted_client_ids permanently
     try {
       const stored = localStorage.getItem('koko_deleted_client_ids');
       const list: string[] = stored ? JSON.parse(stored) : ['client-bulungi-town', 'client-safi-bay'];
@@ -820,11 +540,9 @@ export default function SettingsPage() {
       localStorage.setItem('koko_deleted_client_ids', JSON.stringify(list));
     } catch (e) {}
 
-    // 2. Remove from local state
     const updated = clients.filter((c) => c.id !== clientId);
     setClients(updated);
 
-    // 3. Remove from koko_custom_clients
     try {
       const localCustom = localStorage.getItem('koko_custom_clients');
       if (localCustom) {
@@ -832,29 +550,16 @@ export default function SettingsPage() {
         const filtered = currentList.filter((c) => c.id !== clientId);
         localStorage.setItem('koko_custom_clients', JSON.stringify(filtered));
       }
-    } catch (e) {
-      console.warn('Error updating custom clients in localStorage:', e);
-    }
+    } catch (e) {}
 
-    // 4. Remove associated social accounts and cached report
     try {
       localStorage.removeItem(`koko_report_${clientId}`);
-      localStorage.removeItem(`koko_posts_${clientId}`);
       localStorage.removeItem(`koko_active_ig_token_${clientId}`);
       localStorage.removeItem(`koko_active_ig_account_${clientId}`);
       localStorage.removeItem(`koko_active_ig_username_${clientId}`);
-      localStorage.removeItem(`koko_active_tt_token_${clientId}`);
-      localStorage.removeItem(`koko_active_tt_account_${clientId}`);
-      localStorage.removeItem(`koko_active_tt_username_${clientId}`);
       localStorage.removeItem(`koko_meta_available_pages_${clientId}`);
       localStorage.removeItem(`koko_active_page_id_${clientId}`);
       localStorage.removeItem(`koko_active_page_name_${clientId}`);
-      document.cookie = `koko_session_ig_connected_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_session_ig_account_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_active_ig_token_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_session_tt_connected_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_session_tt_account_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_active_tt_token_${encodeURIComponent(clientId)}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       const storedAccounts = localStorage.getItem('koko_connected_social_accounts');
       if (storedAccounts) {
         const accounts: SocialAccountData[] = JSON.parse(storedAccounts);
@@ -863,14 +568,12 @@ export default function SettingsPage() {
       }
     } catch (e) {}
 
-    // 5. Fire DB delete request
     try {
       await axios.delete(`/api/clients?id=${clientId}`);
     } catch (apiErr) {
       console.warn('API client delete call notice:', apiErr);
     }
 
-    // 6. Update selectedClientId
     if (selectedClientId === clientId) {
       setSelectedClientId(updated[0]?.id || '');
     }
@@ -885,7 +588,47 @@ export default function SettingsPage() {
     return window.location.origin;
   };
 
-  // 1. Connect TikTok directly by username/handle (bypasses developer app approval)
+  // 1. Trigger Official Meta / Instagram Business Login
+  const triggerInstagramDirectLogin = () => {
+    if (!selectedClientId) {
+      alert('Please create or select a client account first.');
+      setShowAddClientModal(true);
+      return;
+    }
+    if (igIdentifier.trim()) {
+      try {
+        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
+      } catch (e) {}
+    }
+    triggerMetaFacebookLogin(true);
+  };
+
+  // 2. Trigger Meta Facebook Business Login (App ID 1532121481550639)
+  const triggerMetaFacebookLogin = (bypassConfigId: boolean = true) => {
+    if (!selectedClientId) {
+      alert('Please create or select a client account first.');
+      setShowAddClientModal(true);
+      return;
+    }
+    if (igIdentifier.trim()) {
+      try {
+        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
+      } catch (e) {}
+    }
+
+    const fbAppId = '1532121481550639';
+    const origin = getOAuthOrigin();
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
+    const state = encodeURIComponent(selectedClientId);
+    
+    // Proven working scopes
+    const scopes = 'instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement';
+    const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=${scopes}&response_type=code&display=popup`;
+
+    openCenteredPopup(oauthUrl, 'MetaOAuth');
+  };
+
+  // Direct handle connection for TikTok
   const handleConnectTikTokDirect = async (identifier?: string) => {
     const rawTarget = identifier?.trim() || ttIdentifier.trim();
     if (!rawTarget) {
@@ -899,7 +642,7 @@ export default function SettingsPage() {
     }
 
     const cleanUsername = rawTarget.replace(/^@/, '');
-    const displayHandle = tiktokTab === 'phone' ? rawTarget : `@${cleanUsername}`;
+    const displayHandle = `@${cleanUsername}`;
     const directToken = `tt_direct_${cleanUsername}_${Date.now()}`;
 
     const newAccount: SocialAccountData = {
@@ -917,31 +660,14 @@ export default function SettingsPage() {
       const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'tiktok'));
       updated.push(newAccount);
       localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
-      localStorage.setItem('koko_selected_client_id', selectedClientId);
       localStorage.setItem(`koko_active_tt_token_${selectedClientId}`, directToken);
       localStorage.setItem(`koko_active_tt_account_${selectedClientId}`, displayHandle);
-      localStorage.setItem(`koko_active_tt_username_${selectedClientId}`, cleanUsername);
 
-      // Persistent cookies (1-year duration) scoped strictly to selectedClientId
-      const cookieAge = 31536000;
-      document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_tt_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_tt_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_active_tt_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      // Invalidate legacy unscoped global cookies
-      document.cookie = `koko_session_tt_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_session_tt_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    } catch (e) {
-      console.warn('LocalStorage save error on direct TikTok connect:', e);
-    }
-
-    setSocialAccounts((prev) => {
-      const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'tiktok'));
-      return [...filtered, newAccount];
-    });
-
-    setTtIdentifier('');
-    setTtPassword('');
+      setSocialAccounts((prev) => {
+        const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'tiktok'));
+        return [...filtered, newAccount];
+      });
+    } catch (e) {}
 
     try {
       await axios.post('/api/social-accounts', {
@@ -950,230 +676,21 @@ export default function SettingsPage() {
         platformAccountId: displayHandle,
         accessToken: directToken,
       });
-    } catch (apiErr) {
-      console.warn('API social-accounts notice:', apiErr);
-    }
+    } catch (err) {}
   };
 
-  // 2. Connect Instagram directly by handle (alternative to Meta OAuth)
-  const handleConnectInstagramDirect = async (identifier?: string) => {
-    const rawTarget = identifier?.trim() || igIdentifier.trim();
-    if (!rawTarget) {
-      alert('Please enter an Instagram handle (e.g. @kokodigital).');
-      return;
-    }
-    if (!selectedClientId) {
-      alert('Please create or select a client account first.');
-      setShowAddClientModal(true);
-      return;
-    }
-
-    const cleanUsername = rawTarget.replace(/^@/, '');
-    const displayHandle = `@${cleanUsername}`;
-    const directToken = `ig_direct_${cleanUsername}_${Date.now()}`;
-
-    const newAccount: SocialAccountData = {
-      id: `sa_${selectedClientId}_instagram`,
-      clientId: selectedClientId,
-      platform: 'instagram',
-      platformAccountId: displayHandle,
-      accessToken: directToken,
-      tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-    };
-
-    try {
-      const stored = localStorage.getItem('koko_connected_social_accounts');
-      const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
-      const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
-      updated.push(newAccount);
-      localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
-      localStorage.setItem('koko_selected_client_id', selectedClientId);
-      localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, directToken);
-      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, displayHandle);
-      localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, cleanUsername);
-
-      // Persistent cookies (1-year duration) scoped strictly to selectedClientId
-      const cookieAge = 31536000;
-      document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
-      // Invalidate legacy unscoped global cookies
-      document.cookie = `koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    } catch (e) {
-      console.warn('LocalStorage save error on direct Instagram connect:', e);
-    }
-
-    setSocialAccounts((prev) => {
-      const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
-      return [...filtered, newAccount];
-    });
-
-    setIgIdentifier('');
-    setIgPassword('');
-
-    try {
-      await axios.post('/api/social-accounts', {
-        clientId: selectedClientId,
-        platform: 'instagram',
-        platformAccountId: displayHandle,
-        accessToken: directToken,
-      });
-    } catch (apiErr) {
-      console.warn('API social-accounts notice:', apiErr);
-    }
-  };
-
-  // 3. Save custom developer portal credentials to browser localStorage
-  const handleSaveDeveloperKeys = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    try {
-      if (tiktokClientKey.trim()) {
-        localStorage.setItem('koko_tiktok_client_key', tiktokClientKey.trim());
-      } else {
-        localStorage.removeItem('koko_tiktok_client_key');
-      }
-      if (tiktokClientSecret.trim()) {
-        localStorage.setItem('koko_tiktok_client_secret', tiktokClientSecret.trim());
-      } else {
-        localStorage.removeItem('koko_tiktok_client_secret');
-      }
-      if (metaAppId.trim()) {
-        localStorage.setItem('koko_meta_app_id', metaAppId.trim());
-      }
-      if (metaAppSecret.trim()) {
-        localStorage.setItem('koko_meta_app_secret', metaAppSecret.trim());
-      }
-      if (configIdInput.trim()) {
-        localStorage.setItem('koko_meta_config_id', configIdInput.trim());
-      }
-      setCredentialsSaved(true);
-      setTimeout(() => setCredentialsSaved(false), 3000);
-    } catch (err) {
-      console.warn('Error saving developer keys to localStorage:', err);
-    }
-  };
-
-  // 4. Trigger Official Meta / Instagram Business Login (Supports full Insights & Analytics)
-  const triggerInstagramDirectLogin = () => {
-    if (!selectedClientId) {
-      alert('Please create or select a client account first.');
-      setShowAddClientModal(true);
-      return;
-    }
-    if (igIdentifier.trim()) {
-      try {
-        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
-      } catch (e) {}
-    }
-
-    setIsOpeningLogin('instagram');
-    setTimeout(() => setIsOpeningLogin(null), 3000);
-
-    // Launch official Meta Login using direct verified scopes (bypasses config and email)
-    triggerMetaFacebookLogin(true);
-  };
-
-  // 5. Trigger Meta Facebook Business Login (Works directly with Facebook App ID 1532121481550639)
-  const triggerMetaFacebookLogin = (bypassConfigId: boolean = true, rerequest: boolean = false) => {
-    if (!selectedClientId) {
-      alert('Please create or select a client account first.');
-      setShowAddClientModal(true);
-      return;
-    }
-    if (igIdentifier.trim()) {
-      try {
-        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
-      } catch (e) {}
-    }
-
-    const rawAppId = (metaAppId || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || '1532121481550639').replace(/['"\s]/g, '');
-    const fbAppId = (!rawAppId || rawAppId === '1762099978384335' || rawAppId.length < 5) ? '1532121481550639' : rawAppId;
-
-    // Reject legacy config ID 1590313085890812 because it forces the invalid 'email' scope rejected by Meta
-    const cleanConfigId = (configIdInput || '').replace(/['"\s]/g, '').trim();
-    const configId = (!bypassConfigId && cleanConfigId && cleanConfigId !== '1590313085890812') ? cleanConfigId : null;
-
-    if (!fbAppId || fbAppId.length < 5) {
-      setShowSetupGuide(true);
-      return;
-    }
-
-    setIsOpeningLogin('instagram');
-    setTimeout(() => setIsOpeningLogin(null), 3000);
-
-    const origin = getOAuthOrigin();
-    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/facebook`);
-    const state = encodeURIComponent(selectedClientId);
-    const rerequestParam = rerequest ? '&auth_type=rerequest' : '';
-    // Scopes updated to match configured Meta app permissions (including email and pages_read_engagement)
-    const scopes = 'public_profile,email,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights';
-    
-    const oauthUrl = configId
-      ? `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&config_id=${configId}&redirect_uri=${redirectUri}&state=${state}&response_type=code&display=popup${rerequestParam}`
-      : `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${redirectUri}&state=${state}&scope=${scopes}&response_type=code&display=popup${rerequestParam}`;
-
-    openCenteredPopup(oauthUrl, 'MetaOAuth');
-  };
-
-  // 6. Trigger Direct TikTok OAuth Login Flow with PKCE
+  // Trigger Direct TikTok OAuth Login Flow with PKCE
   const triggerTikTokOAuthLogin = async () => {
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
       setShowAddClientModal(true);
       return;
     }
-    const clientKey = (tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009').trim();
+    const clientKey = tiktokClientKey || process.env.NEXT_PUBLIC_TIKTOK_CLIENT_KEY || 'awzwmzqb12ijk009';
 
     if (!clientKey || clientKey === 'your_tiktok_client_key' || clientKey.length < 5) {
       setShowSetupGuide(true);
       return;
-    }
-
-    setIsOpeningLogin('tiktok');
-    setTimeout(() => setIsOpeningLogin(null), 3000);
-
-    const width = 580;
-    const height = 700;
-    const left = typeof window !== 'undefined' ? Math.max(0, window.screenX + (window.outerWidth - width) / 2) : 100;
-    const top = typeof window !== 'undefined' ? Math.max(0, window.screenY + (window.outerHeight - height) / 2) : 100;
-
-    // Immediately open about:blank synchronously within user click event to prevent popup delay/blocking
-    const popup = window.open(
-      'about:blank',
-      'TikTokOAuth',
-      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes,status=no,toolbar=no,menubar=no`
-    );
-
-    if (popup) {
-      try {
-        popup.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>Opening TikTok Login...</title>
-              <style>
-                * { box-sizing: border-box; }
-                body { background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 24px; text-align: center; }
-                .spinner { width: 44px; height: 44px; border: 3.5px solid rgba(255,255,255,0.12); border-top-color: #25F4EE; border-right-color: #FE2C55; border-radius: 50%; animation: spin 0.75s linear infinite; margin-bottom: 20px; }
-                @keyframes spin { to { transform: rotate(360deg); } }
-                h3 { font-size: 17px; font-weight: 700; margin: 0 0 6px; color: #f5f5f5; }
-                p { font-size: 13px; color: #888; margin: 0; }
-              </style>
-            </head>
-            <body>
-              <div class="spinner"></div>
-              <h3>Connecting to TikTok Login...</h3>
-              <p>Please wait while we open the TikTok authorization window.</p>
-            </body>
-          </html>
-        `);
-        popup.document.close();
-        popup.focus();
-      } catch (e) {}
     }
 
     const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -1197,16 +714,7 @@ export default function SettingsPage() {
 
     const oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`;
 
-    if (popup && !popup.closed) {
-      try {
-        popup.location.replace(oauthUrl);
-      } catch (e) {
-        popup.location.href = oauthUrl;
-      }
-      popup.focus();
-    } else {
-      window.location.href = oauthUrl;
-    }
+    openCenteredPopup(oauthUrl, 'TikTokOAuth');
   };
 
   // Trigger manual refresh for all active long-lived tokens
@@ -1251,8 +759,8 @@ export default function SettingsPage() {
             onClick={() => setShowSetupGuide(true)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-gray-100 text-gray-800 text-xs font-semibold rounded-xl hover:bg-gray-200 transition-all cursor-pointer border border-gray-200"
           >
-            <Key className="w-4 h-4 text-gray-600" />
-            Developer Keys & Guide
+            <HelpCircle className="w-4 h-4 text-gray-600" />
+            App Setup Guide
           </button>
           <button
             onClick={() => handleRefreshToken()}
@@ -1272,7 +780,7 @@ export default function SettingsPage() {
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Client Account:</label>
             <select
               value={selectedClientId}
-              onChange={(e) => handleSelectClient(e.target.value)}
+              onChange={(e) => setSelectedClientId(e.target.value)}
               className="bg-gray-50 border border-gray-300 font-semibold text-gray-900 text-sm rounded-xl focus:ring-black focus:border-black p-2.5 outline-none cursor-pointer"
             >
               {clients.map((c) => (
@@ -1317,9 +825,9 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Connected Accounts Grid - Familiar Mobile Card Experiences */}
+      {/* Connected Accounts Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        {/* Instagram Account Card - Modeled after Dark Phone-Sleek Login UI */}
+        {/* Instagram Account Card */}
         <div className="bg-black border border-neutral-800 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col justify-between text-white relative overflow-hidden">
           {/* Top brand gradient line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600" />
@@ -1374,7 +882,7 @@ export default function SettingsPage() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => fetchAvailablePages(false)}
+                      onClick={fetchAvailablePages}
                       disabled={isFetchingPages}
                       className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
                     >
@@ -1382,32 +890,6 @@ export default function SettingsPage() {
                       {isFetchingPages ? 'Scanning...' : 'Scan Pages'}
                     </button>
                   </div>
-
-                  {scanNotice && (
-                    <div
-                      className={`p-2.5 rounded-xl border text-xs flex flex-col gap-1.5 transition-all ${
-                        scanNotice.type === 'success'
-                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                          : scanNotice.type === 'error'
-                          ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
-                          : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
-                      }`}
-                    >
-                      <div className="flex items-start gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span className="leading-snug">{scanNotice.message}</span>
-                      </div>
-                      {scanNotice.type === 'reauth' && (
-                        <button
-                          type="button"
-                          onClick={() => fetchAvailablePages(true)}
-                          className="self-start mt-1 px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[11px] rounded-lg transition-colors cursor-pointer"
-                        >
-                          Authorize & Select Pages via Facebook →
-                        </button>
-                      )}
-                    </div>
-                  )}
 
                   {availablePages.length > 0 ? (
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -1458,10 +940,6 @@ export default function SettingsPage() {
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectPage(page);
-                                  }}
                                   className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
                                 >
                                   Select
@@ -1471,85 +949,18 @@ export default function SettingsPage() {
                           </div>
                         );
                       })}
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => fetchAvailablePages(true)}
-                          disabled={isFetchingPages}
-                          className="flex-1 text-center text-[10px] text-neutral-400 hover:text-emerald-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <RefreshCw className={`w-2.5 h-2.5 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                          Re-scan Facebook
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowTokenInput(!showTokenInput)}
-                          className="text-center text-[10px] text-sky-400 hover:text-sky-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <Key className="w-2.5 h-2.5" />
-                          {showTokenInput ? 'Hide Token' : 'Enter Token'}
-                        </button>
-                      </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800 text-xs text-neutral-400">
                       <p>Active channel: <strong className="text-white">{igAccount.platformAccountId}</strong>.</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => fetchAvailablePages(false)}
-                          disabled={isFetchingPages}
-                          className="text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
-                          {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowTokenInput(!showTokenInput)}
-                          className="text-sky-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          <Key className="w-3 h-3" />
-                          {showTokenInput ? 'Hide Token Input' : 'Enter Meta Token'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {showTokenInput && (
-                    <div className="p-3.5 rounded-xl bg-neutral-900/95 border border-neutral-700/80 space-y-2.5 text-left transition-all">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                          <Key className="w-3.5 h-3.5 text-emerald-400" />
-                          Connect with Meta Token (Bypass OAuth)
-                        </span>
-                        <a
-                          href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] text-sky-400 hover:text-sky-300 underline flex items-center gap-1 font-medium"
-                        >
-                          Graph Explorer ↗
-                        </a>
-                      </div>
-                      <p className="text-[11px] text-neutral-400 leading-relaxed">
-                        Paste a User Token or Page Access Token from Meta to scan all your Pages and link your Instagram account immediately.
-                      </p>
-                      <input
-                        type="text"
-                        value={metaDirectTokenInput}
-                        onChange={(e) => setMetaDirectTokenInput(e.target.value)}
-                        placeholder="Paste Meta Token (EAA...)"
-                        className="w-full bg-black text-white placeholder-neutral-500 text-xs rounded-lg px-3 py-2 border border-neutral-800 focus:border-emerald-500 outline-none"
-                      />
                       <button
                         type="button"
-                        disabled={isConnectingMetaToken || !metaDirectTokenInput.trim()}
-                        onClick={() => handleConnectWithMetaToken()}
-                        className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                        onClick={fetchAvailablePages}
+                        disabled={isFetchingPages}
+                        className="mt-1.5 text-emerald-400 hover:underline text-[11px] font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       >
-                        <RefreshCw className={`w-3 h-3 ${isConnectingMetaToken ? 'animate-spin' : ''}`} />
-                        {isConnectingMetaToken ? 'Validating Token & Scanning...' : 'Scan & Link Pages with Token'}
+                        <RefreshCw className={`w-3 h-3 ${isFetchingPages ? 'animate-spin' : ''}`} />
+                        {isFetchingPages ? 'Scanning Pages...' : 'Scan & Choose from Multiple Managed Pages'}
                       </button>
                     </div>
                   )}
@@ -1585,14 +996,13 @@ export default function SettingsPage() {
               </div>
             ) : (
               <>
-                {/* Form Input Mockups matching Screenshot 2 */}
                 <div className="space-y-3 mb-2">
                   <div>
                     <input
                       type="text"
                       value={igIdentifier}
                       onChange={(e) => setIgIdentifier(e.target.value)}
-                      placeholder="Instagram handle (e.g. @kokodigital or username)"
+                      placeholder="Phone number, username or email address"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all"
                     />
                   </div>
@@ -1602,7 +1012,7 @@ export default function SettingsPage() {
                       type={showIgPassword ? "text" : "password"}
                       value={igPassword}
                       onChange={(e) => setIgPassword(e.target.value)}
-                      placeholder="Password (optional for direct handle link)"
+                      placeholder="Password"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
                     />
                     <button
@@ -1625,132 +1035,46 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Primary Action Button: Purple to Crimson Gradient */}
                 <div className="mt-4 space-y-3">
                   <button
                     type="button"
-                    disabled={Boolean(isOpeningLogin)}
-                    onClick={() => {
-                      if (igIdentifier.trim()) {
-                        handleConnectInstagramDirect();
-                      } else {
-                        triggerInstagramDirectLogin();
-                      }
-                    }}
-                    className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-80"
+                    onClick={triggerInstagramDirectLogin}
+                    className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                   >
-                    {isOpeningLogin === 'instagram' ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                        <span>Opening Meta Login...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ExternalLink className="w-4 h-4" />
-                        <span>
-                          {igIdentifier.trim()
-                            ? `Connect @${igIdentifier.replace(/^@/, '')} Profile`
-                            : 'login'}
-                        </span>
-                      </>
-                    )}
+                    <ExternalLink className="w-4 h-4" />
+                    login
                   </button>
 
-                  {/* Direct connect helper tip */}
-                  <div className="p-2.5 bg-neutral-900/70 border border-neutral-800/80 rounded-xl">
-                    <p className="text-[11px] text-neutral-300 text-center leading-normal">
-                      ✨ <strong>Instant 1-Click:</strong> Enter your Instagram <span className="text-white font-mono font-bold">@handle</span> above to connect without needing Facebook or a VPN!
-                    </p>
-                  </div>
-
-                  {/* OR Divider Line */}
-                  <div className="flex items-center my-2">
+                  <div className="flex items-center my-3">
                     <div className="flex-grow border-t border-neutral-800" />
-                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR META OAUTH</span>
+                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR</span>
                     <div className="flex-grow border-t border-neutral-800" />
                   </div>
 
-                  {/* Meta Business Login Button */}
                   <button
                     type="button"
-                    disabled={Boolean(isOpeningLogin)}
                     onClick={() => triggerMetaFacebookLogin(true)}
-                    className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
+                    className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    {isOpeningLogin === 'instagram' || isOpeningLogin === 'meta' ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                        <span>Connecting to Meta...</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
-                        </svg>
-                        <span>login with meta</span>
-                      </>
-                    )}
+                    <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v7.001C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                    </svg>
+                    login with meta
                   </button>
-
-                  {/* OR Direct Meta Token Input */}
-                  <div className="flex items-center my-2">
-                    <div className="flex-grow border-t border-neutral-800" />
-                    <span className="px-3 text-[10px] font-bold text-neutral-500 tracking-wider">OR META ACCESS TOKEN</span>
-                    <div className="flex-grow border-t border-neutral-800" />
-                  </div>
-
-                  <div className="p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl space-y-2 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-neutral-300 flex items-center gap-1">
-                        <Key className="w-3 h-3 text-emerald-400" />
-                        Direct Token Bypass
-                      </span>
-                      <a
-                        href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[10px] text-sky-400 hover:text-sky-300 underline flex items-center gap-0.5"
-                      >
-                        Graph Explorer ↗
-                      </a>
-                    </div>
-                    <input
-                      type="text"
-                      value={metaDirectTokenInput}
-                      onChange={(e) => setMetaDirectTokenInput(e.target.value)}
-                      placeholder="Paste User Token or Page Token (EAA...)"
-                      className="w-full bg-black/60 text-white placeholder-neutral-500 text-xs rounded-lg px-3 py-2 border border-neutral-800 focus:border-emerald-500 outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={isConnectingMetaToken || !metaDirectTokenInput.trim()}
-                      onClick={() => handleConnectWithMetaToken()}
-                      className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isConnectingMetaToken ? 'animate-spin' : ''}`} />
-                      {isConnectingMetaToken ? 'Validating Token...' : 'Connect with Meta Token'}
-                    </button>
-                  </div>
-
-                  <p className="text-[10px] text-center text-neutral-500">
-                    Note: If Meta login times out on your ISP, turn on a VPN (or Cloudflare 1.1.1.1) to unblock Facebook.
-                  </p>
                 </div>
               </>
             )}
           </div>
 
-          {/* Card Footer Info */}
           <div className="mt-6 pt-4 border-t border-neutral-900 flex items-center justify-between text-[11px] text-neutral-500">
             <span>Account: <strong className="text-neutral-300">{igAccount?.platformAccountId || 'Not Connected'}</strong></span>
             <span className="text-emerald-500 font-medium">{igAccount ? '60-Day Active' : 'Auto-Sync Ready'}</span>
           </div>
         </div>
 
-        {/* TikTok Account Card - Tabbed Login & Connected Channel UI */}
+        {/* TikTok Account Card */}
         <div className="bg-white border border-gray-200 rounded-3xl p-6 sm:p-7 shadow-xl flex flex-col justify-between text-gray-900 relative">
           <div>
-            {/* Top Bar: Back Chevron, Title "Log in", and Help Question Mark */}
             <div className="flex items-center justify-between mb-4">
               <button
                 type="button"
@@ -1762,218 +1086,126 @@ export default function SettingsPage() {
               </button>
 
               <h3 className="text-base font-extrabold text-gray-900 font-heading">
-                {ttAccount ? 'TikTok Account' : 'Log in'}
+                Log in
               </h3>
 
               <button
                 type="button"
                 onClick={() => setShowSetupGuide(true)}
                 className="text-gray-400 hover:text-black p-1 transition-colors"
-                title="Developer App Keys & Setup Guide"
+                title="Help"
               >
                 <HelpCircle className="w-5 h-5" />
               </button>
             </div>
 
-            {ttAccount ? (
-              /* Connected TikTok Channel UI */
-              <div className="space-y-4">
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      TikTok Connected
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
-                      365-Day Active
-                    </span>
-                  </div>
-                  <p className="text-lg font-extrabold text-gray-900 font-heading mt-2">
-                    {ttAccount.platformAccountId}
-                  </p>
-                  <p className="text-xs text-emerald-700 font-medium mt-1">
-                    ✓ Active Channel • Ready for Live Sync & Analytics
-                  </p>
-                </div>
+            <div className="flex border-b border-gray-200 mb-6">
+              <button
+                type="button"
+                onClick={() => setTiktokTab('phone')}
+                className={`w-1/2 py-2.5 text-center text-xs font-bold transition-all relative ${
+                  tiktokTab === 'phone'
+                    ? 'text-gray-900'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Phone
+                {tiktokTab === 'phone' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black" />
+                )}
+              </button>
 
-                <div className="pt-2 space-y-2.5">
-                  <Link
-                    href="/"
-                    className="w-full py-3 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-                  >
-                    View Live Analytics in Dashboard →
-                  </Link>
+              <button
+                type="button"
+                onClick={() => setTiktokTab('email')}
+                className={`w-1/2 py-2.5 text-center text-xs font-bold transition-all relative ${
+                  tiktokTab === 'email'
+                    ? 'text-gray-900'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Email / Username
+                {tiktokTab === 'email' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black" />
+                )}
+              </button>
+            </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDisconnectAccount('tiktok')}
-                      className="flex-1 py-2.5 bg-gray-100 hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-gray-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Disconnect
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDisconnectAccount('tiktok')}
-                      className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Switch Account
-                    </button>
-                  </div>
+            <div className="space-y-4 mb-4">
+              {tiktokTab === 'phone' ? (
+                <div className="flex items-center border-b border-gray-200 pb-2.5">
+                  <span className="text-xs font-bold text-gray-700 pr-2 border-r border-gray-200 mr-2">+256</span>
+                  <input
+                    type="tel"
+                    value={ttIdentifier}
+                    onChange={(e) => setTtIdentifier(e.target.value)}
+                    placeholder={ttAccount?.platformAccountId || "Phone number"}
+                    className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
+                  />
                 </div>
+              ) : (
+                <div className="border-b border-gray-200 pb-2.5">
+                  <input
+                    type="text"
+                    value={ttIdentifier}
+                    onChange={(e) => setTtIdentifier(e.target.value)}
+                    placeholder={ttAccount?.platformAccountId || "Email or username (e.g. @kash8342)"}
+                    className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
+                  />
+                </div>
+              )}
+
+              <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between">
+                <input
+                  type={showTtPassword ? "text" : "password"}
+                  value={ttAccount ? "••••••••••••••••••••" : ttPassword}
+                  onChange={(e) => setTtPassword(e.target.value)}
+                  readOnly={!!ttAccount}
+                  placeholder={ttAccount ? "365-Day Refresh Token Active" : "Password"}
+                  className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTtPassword(!showTtPassword)}
+                  className="text-gray-400 hover:text-gray-600 ml-2"
+                >
+                  {showTtPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
-            ) : (
-              /* Unconnected Login Card Matching Familiar Mobile Interface */
-              <>
-                {/* Interactive Tabs from Screenshot 1: Phone | Email / Username */}
-                <div className="flex border-b border-gray-200 mb-6">
-                  <button
-                    type="button"
-                    onClick={() => setTiktokTab('phone')}
-                    className={`w-1/2 py-2.5 text-center text-xs font-bold transition-all relative ${
-                      tiktokTab === 'phone'
-                        ? 'text-gray-900'
-                        : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    Phone
-                    {tiktokTab === 'phone' && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black" />
-                    )}
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setTiktokTab('email')}
-                    className={`w-1/2 py-2.5 text-center text-xs font-bold transition-all relative ${
-                      tiktokTab === 'email'
-                        ? 'text-gray-900'
-                        : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    Email / Username
-                    {tiktokTab === 'email' && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black" />
-                    )}
-                  </button>
-                </div>
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => setShowSetupGuide(true)}
+                  className="text-[11px] font-semibold text-gray-900 hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            </div>
 
-                {/* Form Input Fields */}
-                <div className="space-y-4 mb-4">
-                  {tiktokTab === 'phone' ? (
-                    <div className="flex items-center border-b border-gray-200 pb-2.5">
-                      <span className="text-xs font-bold text-gray-700 pr-2 border-r border-gray-200 mr-2">+256</span>
-                      <input
-                        type="tel"
-                        value={ttIdentifier}
-                        onChange={(e) => setTtIdentifier(e.target.value)}
-                        placeholder="Phone number"
-                        className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
-                      />
-                    </div>
-                  ) : (
-                    <div className="border-b border-gray-200 pb-2.5">
-                      <input
-                        type="text"
-                        value={ttIdentifier}
-                        onChange={(e) => setTtIdentifier(e.target.value)}
-                        placeholder="Email or @username (e.g. @kokodigital)"
-                        className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
-                      />
-                    </div>
-                  )}
+            <div className="mt-6 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (ttIdentifier.trim()) {
+                    handleConnectTikTokDirect();
+                  } else {
+                    triggerTikTokOAuthLogin();
+                  }
+                }}
+                className="w-full py-3.5 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.99]"
+              >
+                <ExternalLink className="w-4 h-4" />
+                {ttIdentifier.trim() ? `Connect ${ttIdentifier.startsWith('@') ? ttIdentifier : '@' + ttIdentifier}` : 'Log in'}
+              </button>
 
-                  <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between">
-                    <input
-                      type={showTtPassword ? "text" : "password"}
-                      value={ttPassword}
-                      onChange={(e) => setTtPassword(e.target.value)}
-                      placeholder="Password (optional for direct handle link)"
-                      className="w-full text-xs text-gray-900 placeholder-gray-400 outline-none font-medium bg-transparent"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowTtPassword(!showTtPassword)}
-                      className="text-gray-400 hover:text-gray-600 ml-2"
-                    >
-                      {showTtPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setShowSetupGuide(true)}
-                      className="text-gray-500 hover:text-black hover:underline"
-                    >
-                      Configure Developer Keys
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowSetupGuide(true)}
-                      className="font-semibold text-gray-900 hover:underline"
-                    >
-                      Need help?
-                    </button>
-                  </div>
-                </div>
-
-                {/* Primary Action Button: Connect Directly */}
-                <div className="mt-5 space-y-2.5">
-                  <button
-                    type="button"
-                    disabled={Boolean(isOpeningLogin)}
-                    onClick={() => {
-                      if (ttIdentifier.trim()) {
-                        handleConnectTikTokDirect();
-                      } else {
-                        triggerTikTokOAuthLogin();
-                      }
-                    }}
-                    className="w-full py-3.5 bg-black hover:bg-neutral-800 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.99] disabled:opacity-80"
-                  >
-                    {isOpeningLogin === 'tiktok' ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                        <span>Opening TikTok Login...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ExternalLink className="w-4 h-4" />
-                        <span>{ttIdentifier.trim() ? 'Connect TikTok Profile' : 'Log in with TikTok'}</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* OR Divider Line */}
-                  <div className="flex items-center my-2">
-                    <div className="flex-grow border-t border-gray-200" />
-                    <span className="px-2 text-[10px] font-bold text-gray-400 tracking-wider">OR DEVELOPER OAUTH</span>
-                    <div className="flex-grow border-t border-gray-200" />
-                  </div>
-
-                  {/* Secondary Action Button: TikTok Developer OAuth */}
-                  <button
-                    type="button"
-                    disabled={Boolean(isOpeningLogin)}
-                    onClick={triggerTikTokOAuthLogin}
-                    className="w-full py-2.5 bg-[#F1F1F2] hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Log in with TikTok Developer App (OAuth)
-                  </button>
-
-                  <p className="text-[10px] text-center text-gray-400">
-                    Direct handle connection or TikTok Display API v2 (PKCE SHA-256)
-                  </p>
-                </div>
-              </>
-            )}
+              <p className="text-[11px] text-center text-gray-400">
+                Official TikTok Display API v2 • Secured with PKCE SHA-256
+              </p>
+            </div>
           </div>
 
-          {/* Card Footer Info */}
           <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
             <span>Account: <strong className="text-gray-900">{ttAccount?.platformAccountId || 'Not Connected'}</strong></span>
             {ttAccount ? (
@@ -1982,7 +1214,7 @@ export default function SettingsPage() {
               </span>
             ) : (
               <span className="text-amber-600 font-bold flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> Ready to Connect
+                <AlertCircle className="w-3 h-3" /> Ready
               </span>
             )}
           </div>
@@ -2054,7 +1286,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Developer App Credentials & Setup Guide Modal */}
+      {/* App Setup Guide Modal */}
       {showSetupGuide && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl relative max-h-[85vh] overflow-y-auto border border-gray-100">
@@ -2067,141 +1299,39 @@ export default function SettingsPage() {
 
             <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
               <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-900 flex items-center justify-center font-bold">
-                <Key className="w-5 h-5" />
+                <HelpCircle className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 font-heading">
-                  Developer App Keys & Setup Guide
+                  Developer Portal Setup Guide
                 </h3>
-                <p className="text-xs text-gray-500">Configure custom OAuth credentials or connect profiles directly</p>
+                <p className="text-xs text-gray-500">Step-by-step instructions for Meta & TikTok Developer Apps</p>
               </div>
-            </div>
-
-            {/* Explanation of the TikTok Error */}
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-900">
-                  <strong className="font-bold text-amber-950 block mb-1">
-                    Why did TikTok show: &quot;We couldn&apos;t log in with TikTok • client_key&quot;?
-                  </strong>
-                  <p className="leading-relaxed mb-2">
-                    TikTok OAuth 2.0 strictly verifies that your request contains a registered <strong>Client Key</strong> from an approved app created at <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-semibold">developers.tiktok.com</code>.
-                  </p>
-                  <p className="leading-relaxed font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">
-                    💡 <strong>Instant Connection (No Developer Account Needed):</strong> Simply enter your TikTok username (e.g. <code>@kokodigital</code>) in the TikTok card on the settings page and click &quot;Connect TikTok Profile&quot; to link your account immediately!
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Interactive Developer Credentials Form */}
-            <div className="mb-6 p-5 bg-gray-50 border border-gray-200 rounded-2xl">
-              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Key className="w-4 h-4 text-black" />
-                Configure Custom Developer App Keys
-              </h4>
-              <p className="text-xs text-gray-500 mb-4">
-                If you have created your own developer applications, you can save your keys here. They will be stored securely in your browser session.
-              </p>
-
-              <form onSubmit={handleSaveDeveloperKeys} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      TikTok Client Key
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. awzw..."
-                      value={tiktokClientKey}
-                      onChange={(e) => setTiktokClientKey(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      TikTok Client Secret
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="e.g. 48f9..."
-                      value={tiktokClientSecret}
-                      onChange={(e) => setTiktokClientSecret(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      Meta / Instagram App ID
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="1532121481550639"
-                      value={metaAppId}
-                      onChange={(e) => setMetaAppId(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                      Meta Config ID (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Leave blank for verified direct scopes"
-                      value={configIdInput}
-                      onChange={(e) => setConfigIdInput(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-mono outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-xs text-emerald-600 font-bold">
-                    {credentialsSaved && '✓ Credentials saved to browser storage!'}
-                  </span>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-black hover:bg-neutral-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
-                  >
-                    Save Developer Keys
-                  </button>
-                </div>
-              </form>
             </div>
 
             <div className="space-y-6 text-xs text-gray-700 leading-relaxed">
-              {/* Business Login for Instagram Setup Instructions */}
               <div>
                 <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-pink-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
-                  Business Login for Instagram (Instagram API with Instagram Login)
+                  Meta Facebook & Instagram Graph API (App ID: 1532121481550639)
                 </h4>
                 <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                  <li>Go to <strong>developers.facebook.com</strong> and open your Meta App.</li>
-                  <li>In App Dashboard, navigate to <strong>Instagram &gt; API setup with Instagram login &gt; 3. Set up Instagram business login &gt; Business login settings</strong>.</li>
-                  <li>In <strong>OAuth redirect URIs</strong>, add: <code>https://koko-digital-studio-insights.vercel.app/api/auth/callback/facebook</code> and <code>http://localhost:3000/api/auth/callback/facebook</code>.</li>
-                  <li>Required new permissions: <code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>pages_show_list</code>.</li>
-                  <li>Click <strong>login with meta</strong> in Settings to authenticate with automatic 60-day token renewal.</li>
+                  <li>Your Meta App ID is preconfigured as <code>1532121481550639</code>.</li>
+                  <li>Click <strong>login</strong> or <strong>login with meta</strong> to open the Meta authorization dialog.</li>
+                  <li>Log in with your Facebook account and select your Facebook Page and linked Instagram account.</li>
+                  <li>Tokens are automatically exchanged for 60-day long-lived tokens with auto-refresh.</li>
+                  <li>Once connected, all managed Pages appear under <strong>Source Page & Channel</strong> where you can switch channels at any time.</li>
                 </ol>
               </div>
 
-              {/* TikTok Setup Instructions */}
               <div>
                 <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-black text-white text-[10px] flex items-center justify-center font-bold">2</span>
                   TikTok for Developers (Display API v2)
                 </h4>
                 <ol className="list-decimal list-inside space-y-1 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                  <li>Go to <strong>developers.tiktok.com</strong> and click <strong>Create App</strong>.</li>
-                  <li>Name: <code>Koko Digital Studio Insights</code>, Category: <code>Business / Analytics</code>.</li>
-                  <li>Add Product: <strong>TikTok Display API v2</strong>. Add Scopes: <code>user.info.basic</code>, <code>video.list</code>.</li>
-                  <li>Set Redirect URI: <code>https://koko-digital-studio-insights.vercel.app/api/auth/callback/tiktok</code> and <code>http://localhost:3000/api/auth/callback/tiktok</code>.</li>
-                  <li>Copy your <strong>Client Key</strong> and <strong>Client Secret</strong> into the inputs above and click <strong>Save Developer Keys</strong>.</li>
+                  <li>Enter your TikTok <code>@handle</code> or click <strong>Log in</strong> to authenticate via TikTok OAuth with PKCE.</li>
+                  <li>Tokens are automatically refreshed every 365 days.</li>
                 </ol>
               </div>
             </div>
@@ -2211,7 +1341,7 @@ export default function SettingsPage() {
                 onClick={() => setShowSetupGuide(false)}
                 className="px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
               >
-                Close Window
+                Got It, Close Guide
               </button>
             </div>
           </div>

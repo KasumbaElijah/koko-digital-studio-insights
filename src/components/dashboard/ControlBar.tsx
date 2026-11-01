@@ -86,7 +86,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           {/* Instagram Badge */}
           {connectedPlatforms?.instagram ? (
             <div className="flex items-center gap-2">
-              {availablePages && availablePages.length > 1 ? (
+              {availablePages && availablePages.length > 0 ? (
                 <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs px-2.5 py-1 rounded-xl border border-emerald-200">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="font-bold text-[10px] uppercase tracking-wider text-emerald-700">Page:</span>

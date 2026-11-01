@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { prisma, serializeData } from '@/lib/prisma';
-import { exchangeMetaLongLivedToken, exchangeInstagramLongLivedToken } from '@/lib/api/auth';
-
-// NOTE: 'force-static' was removed here on purpose. It was pre-rendering
-// this route once at build time, so it could never read the real ?code=
-// value Meta sends back on each live login. Route handlers are dynamic
-// by default in the App Router — that's what we want for a real OAuth
-// callback.
+import { prisma } from '@/lib/prisma';
+import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
 
 export async function GET(request: Request) {
   let code = null;
@@ -31,209 +25,17 @@ export async function GET(request: Request) {
       const errorMsg = url.searchParams.get('error_message') || url.searchParams.get('error_description') || error;
 
       if (error) {
-        const isEmailScopeError = String(errorMsg || '').toLowerCase().includes('email') || String(error || '').toLowerCase().includes('scope');
-
         return new Response(
           `<!DOCTYPE html>
           <html>
-            <head>
-              <meta charset="utf-8"/>
-              <title>Meta Setup Notice - Koko Digital Studio</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <style>
-                * { box-sizing: border-box; }
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                  background: #09090b;
-                  color: #f4f4f5;
-                  margin: 0;
-                  padding: 24px 16px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  min-height: 100vh;
-                }
-                .card {
-                  max-width: 460px;
-                  width: 100%;
-                  background: #141416;
-                  border: 1px solid #27272a;
-                  border-radius: 24px;
-                  padding: 32px 24px;
-                  text-align: center;
-                  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-                }
-                .badge {
-                  display: inline-block;
-                  padding: 4px 10px;
-                  border-radius: 9999px;
-                  font-size: 11px;
-                  font-weight: 700;
-                  background: rgba(239, 68, 68, 0.15);
-                  color: #ef4444;
-                  border: 1px solid rgba(239, 68, 68, 0.3);
-                  margin-bottom: 12px;
-                }
-                h3 { font-size: 19px; font-weight: 800; margin: 0 0 10px; color: #fff; }
-                p { color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
-                .steps-box {
-                  text-align: left;
-                  background: #1c1c1f;
-                  border: 1px solid #2f2f35;
-                  border-radius: 14px;
-                  padding: 14px;
-                  margin-bottom: 20px;
-                  font-size: 12px;
-                  color: #d4d4d8;
-                }
-                .steps-box ol { margin: 6px 0 0; padding-left: 18px; }
-                .steps-box li { margin-bottom: 6px; }
-                .steps-box a { color: #38bdf8; text-decoration: underline; font-weight: 600; }
-                .btn {
-                  display: block;
-                  width: 100%;
-                  padding: 12px;
-                  border-radius: 12px;
-                  font-weight: 700;
-                  font-size: 13px;
-                  text-decoration: none;
-                  cursor: pointer;
-                  border: none;
-                  transition: all 0.15s ease;
-                }
-                .btn-primary {
-                  background: #10b981;
-                  color: #000;
-                  margin-bottom: 10px;
-                }
-                .btn-primary:hover { background: #34d399; }
-                .btn-secondary {
-                  background: #27272a;
-                  color: #fff;
-                  margin-bottom: 16px;
-                }
-                .btn-secondary:hover { background: #3f3f46; }
-                .token-box {
-                  margin-top: 18px;
-                  padding-top: 16px;
-                  border-top: 1px solid #27272a;
-                  text-align: left;
-                }
-                .token-input {
-                  width: 100%;
-                  background: #09090b;
-                  border: 1px solid #3f3f46;
-                  color: #fff;
-                  padding: 10px;
-                  border-radius: 10px;
-                  font-size: 12px;
-                  outline: none;
-                  margin-bottom: 8px;
-                }
-                .token-input:focus { border-color: #10b981; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <span class="badge">App ID: 1532121481550639</span>
-                <h3>${isEmailScopeError ? 'Meta Developer Permission Required' : 'Meta Notice'}</h3>
-                <p>
-                  ${isEmailScopeError
-                    ? 'Meta requires developer accounts testing Facebook Login on this app to add the <strong>email</strong> permission under <em>Use Cases</em> in the Meta Developer Console.'
-                    : (errorMsg || 'Authorization was canceled or did not return an authorization code.')}
-                </p>
-
-                ${isEmailScopeError ? `
-                  <div class="steps-box">
-                    <strong>Quick 30-Second Fix in Meta Console:</strong>
-                    <ol>
-                      <li>Open <a href="https://developers.facebook.com/apps/1532121481550639/use-cases/" target="_blank" rel="noreferrer">Meta App 1532121481550639 Use Cases ↗</a></li>
-                      <li>Under <strong>Authentication and account creation</strong>, click <strong>Customize</strong> (or Permissions).</li>
-                      <li>Click <strong>Add</strong> next to <strong>email</strong>, then Save.</li>
-                    </ol>
-                  </div>
-                ` : ''}
-
-                <div class="token-box">
-                  <p style="font-size:12px; font-weight:700; color:#fff; margin-bottom:4px;">Or Connect Instantly with Graph API Token:</p>
-                  <p style="font-size:11px; margin-bottom:8px;">
-                    Generate a token in 1 click at <a href="https://developers.facebook.com/tools/explorer/?app_id=1532121481550639" target="_blank" style="color:#38bdf8;" rel="noreferrer">Meta Graph API Explorer ↗</a>
-                  </p>
-                  <input id="directMetaToken" class="token-input" placeholder="Paste Access Token (EAA...)" />
-                  <button id="connectTokenBtn" class="btn btn-primary" onclick="handleTokenBypass()">Connect Token & Scan Pages</button>
-                </div>
-
-                <div style="margin-top: 14px;">
-                  <a href="${origin}/settings" class="btn btn-secondary">Return to Settings</a>
-                </div>
+            <head><meta charset="utf-8"/><title>Meta Notice</title></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #000; color: #fff; margin: 0;">
+              <div style="max-width: 440px; margin: 40px auto; background: #111; border: 1px solid #262626; border-radius: 24px; padding: 36px 24px;">
+                <div style="width: 50px; height: 50px; line-height: 50px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 24px; margin: 0 auto 16px;">!</div>
+                <h3 style="font-size: 18px; font-weight: 700; margin: 0 0 10px;">Meta Notice</h3>
+                <p style="color: #aaa; font-size: 13px; margin: 0 0 20px; line-height: 1.5;">${errorMsg || 'Authorization was canceled or did not return an authorization code.'}</p>
+                <a href="${origin}/settings" style="display: block; padding: 12px; background: #fff; color: #000; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 13px;">Return to Settings</a>
               </div>
-
-              <script>
-                async function handleTokenBypass() {
-                  var token = document.getElementById('directMetaToken').value.trim();
-                  var btn = document.getElementById('connectTokenBtn');
-                  if (!token) {
-                    alert('Please paste a Meta access token first.');
-                    return;
-                  }
-                  btn.textContent = 'Validating token...';
-                  btn.disabled = true;
-                  try {
-                    var clientId = '${clientId || ''}';
-                    var res = await fetch('/api/social-accounts/meta-pages?clientId=' + encodeURIComponent(clientId) + '&accessToken=' + encodeURIComponent(token));
-                    var data = await res.json();
-                    if (data && data.success) {
-                      try {
-                        if (clientId) {
-                          localStorage.setItem('koko_active_ig_token_' + clientId, token);
-                          if (data.pages && data.pages.length > 0) {
-                            localStorage.setItem('koko_meta_available_pages_' + clientId, JSON.stringify(data.pages));
-                            var bestPage = data.pages.find(function(p){ return p.instagramBusinessAccount; }) || data.pages[0];
-                            if (bestPage) {
-                              var igUser = bestPage.instagramBusinessAccount ? bestPage.instagramBusinessAccount.username : null;
-                              var disp = igUser ? ('@' + igUser) : bestPage.name;
-                              var stored = localStorage.getItem('koko_connected_social_accounts');
-                              var list = stored ? JSON.parse(stored) : [];
-                              list = list.filter(function(a){ return !(a.clientId === clientId && a.platform === 'instagram'); });
-                              list.push({
-                                id: 'sa_' + clientId + '_instagram',
-                                clientId: clientId,
-                                platform: 'instagram',
-                                platformAccountId: disp,
-                                accessToken: bestPage.access_token || token,
-                                pageId: bestPage.id,
-                                pageName: bestPage.name,
-                                tokenExpiresAt: new Date(Date.now() + 60*24*60*60*1000).toISOString()
-                              });
-                              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(list));
-                              localStorage.setItem('koko_active_page_id_' + clientId, bestPage.id);
-                              localStorage.setItem('koko_active_page_name_' + clientId, bestPage.name);
-                              if (igUser) localStorage.setItem('koko_active_ig_username_' + clientId, igUser);
-                              if (bestPage.access_token) localStorage.setItem('koko_active_ig_token_' + clientId, bestPage.access_token);
-                            }
-                          }
-                        }
-                      } catch (stErr) {}
-
-                      btn.textContent = 'Connected! Redirecting...';
-                      if (window.opener) {
-                        try { window.opener.postMessage({ type: 'META_PAGE_SELECTED' }, '*'); } catch(e){}
-                        setTimeout(function(){ window.close(); }, 800);
-                      } else {
-                        window.location.href = '${origin}/settings';
-                      }
-                    } else {
-                      alert(data.error || 'Token validation failed. Please check permissions.');
-                      btn.textContent = 'Connect Token & Scan Pages';
-                      btn.disabled = false;
-                    }
-                  } catch (err) {
-                    alert('Error connecting token. Please check internet connection.');
-                    btn.textContent = 'Connect Token & Scan Pages';
-                    btn.disabled = false;
-                  }
-                }
-              </script>
             </body>
           </html>`,
           { headers: { 'Content-Type': 'text/html' } }
@@ -263,40 +65,8 @@ export async function GET(request: Request) {
   }
 
   const redirectUri = `${origin}/api/auth/callback/facebook`;
-
-  const VERIFIED_META_APP_ID = '1532121481550639';
-  const VERIFIED_META_APP_SECRET = '6986eab2100e2e9caf9d858650fb873f';
-
-  // Strictly filter out broken legacy App ID 1762099978384335, mock values, and whitespace/quotes
-  let appId = (
-    process.env.FACEBOOK_APP_ID ||
-    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
-    process.env.INSTAGRAM_APP_ID ||
-    process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ||
-    VERIFIED_META_APP_ID
-  ).replace(/['"\s]/g, '');
-
-  if (!appId || appId === '1762099978384335' || appId.startsWith('mock_') || appId.length < 5) {
-    appId = VERIFIED_META_APP_ID;
-  }
-
-  // Strictly sanitize secret, stripping quotes or whitespace, defaulting to verified active secret
-  let appSecret = (
-    process.env.FACEBOOK_APP_SECRET ||
-    process.env.INSTAGRAM_APP_SECRET ||
-    VERIFIED_META_APP_SECRET
-  ).replace(/['"\s]/g, '');
-
-  if (!appSecret || appSecret.startsWith('mock_') || appSecret.length < 10) {
-    appSecret = VERIFIED_META_APP_SECRET;
-  }
-
-  // When connecting via Koko's verified Meta App ID, guarantee the secret matches verified Meta secret
-  if (appId === VERIFIED_META_APP_ID) {
-    appSecret = VERIFIED_META_APP_SECRET;
-  }
-
-  // Strip trailing '#_' if present
+  const appId = '1532121481550639';
+  const appSecret = process.env.FACEBOOK_APP_SECRET?.trim() || '6986eab2100e2e9caf9d858650fb873f';
   const cleanCode = code.replace(/#_.*$/, '');
 
   try {
@@ -304,35 +74,15 @@ export async function GET(request: Request) {
     let igAccountId: string = `ig_${clientId}_official`;
     let expiresAt = new Date(Date.now() + 60 * 86400 * 1000);
 
-    // Direct exchange of Facebook OAuth code for access token with automatic verified retry
-    let tokenRes: any;
-    try {
-      tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
-        params: {
-          client_id: appId,
-          client_secret: appSecret,
-          redirect_uri: redirectUri,
-          code: cleanCode,
-        },
-      });
-    } catch (firstErr: any) {
-      console.warn('Initial Meta token exchange attempt failed:', firstErr?.response?.data || firstErr?.message);
-      if (appId !== VERIFIED_META_APP_ID || appSecret !== VERIFIED_META_APP_SECRET) {
-        console.log('Retrying code exchange with verified Meta credentials (1532121481550639)...');
-        appId = VERIFIED_META_APP_ID;
-        appSecret = VERIFIED_META_APP_SECRET;
-        tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
-          params: {
-            client_id: appId,
-            client_secret: appSecret,
-            redirect_uri: redirectUri,
-            code: cleanCode,
-          },
-        });
-      } else {
-        throw firstErr;
-      }
-    }
+    // Direct exchange of Facebook OAuth code for access token
+    const tokenRes = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
+      params: {
+        client_id: appId,
+        client_secret: appSecret,
+        redirect_uri: redirectUri,
+        code: cleanCode,
+      },
+    });
 
     const shortLivedToken = tokenRes.data.access_token;
     accessToken = shortLivedToken;
@@ -346,35 +96,18 @@ export async function GET(request: Request) {
       console.warn('Long-lived token exchange notice, using short token:', e);
     }
 
-    // Check permissions granted on this token
-    let grantedPermissions: string[] = [];
-    try {
-      const permRes = await axios.get('https://graph.facebook.com/v19.0/me/permissions', {
-        params: { access_token: accessToken },
-      });
-      grantedPermissions = (permRes.data?.data || [])
-        .filter((p: any) => p.status === 'granted')
-        .map((p: any) => p.permission);
-    } catch (permErr) {
-      console.warn('me/permissions notice:', permErr);
-    }
-
-    const hasPagesShowList = grantedPermissions.includes('pages_show_list');
-    const hasInstagramBasic = grantedPermissions.includes('instagram_basic');
-
     // Retrieve linked Instagram accounts or managed Pages
     let discoveredPages: any[] = [];
     let selectedPageId = '';
     let selectedPageName = '';
     let igUsername = '';
-    let meUserName = '';
-    let meUserId = '';
 
     try {
       const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
         params: {
-          fields: 'id,name,category,access_token,instagram_business_account{id,username,name,followers_count}',
+          fields: 'id,name,category,access_token,instagram_business_account{id,username,name,followers_count,profile_picture_url}',
           access_token: accessToken,
+          limit: 50,
         },
       });
 
@@ -390,6 +123,7 @@ export async function GET(request: Request) {
               username: p.instagram_business_account.username,
               name: p.instagram_business_account.name,
               followersCount: p.instagram_business_account.followers_count,
+              profilePictureUrl: p.instagram_business_account.profile_picture_url,
             }
           : null,
       }));
@@ -411,307 +145,78 @@ export async function GET(request: Request) {
       console.warn('me/accounts query notice:', accountsErr);
     }
 
-    // Always fetch personal user info from /me for diagnostics
-    try {
-      const meRes = await axios.get('https://graph.facebook.com/v19.0/me', {
-        params: {
-          fields: 'id,name',
-          access_token: accessToken,
-        },
-      });
-      if (meRes.data?.name) {
-        meUserName = meRes.data.name;
+    if (!igUsername && igAccountId) {
+      try {
+        const igProfileRes = await axios.get(`https://graph.facebook.com/v19.0/${igAccountId}`, {
+          params: {
+            fields: 'id,username,name',
+            access_token: accessToken,
+          },
+        });
+        if (igProfileRes.data?.username) {
+          igUsername = igProfileRes.data.username;
+        }
+      } catch (profileErr) {
+        console.warn('Profile fetch notice:', profileErr);
       }
-      if (meRes.data?.id) {
-        meUserId = meRes.data.id;
-      }
-    } catch (meErr) {
-      console.warn('me query notice:', meErr);
     }
 
-    const hasLinkedInstagram = Boolean(igUsername || (discoveredPages.length > 0 && discoveredPages.some((p) => p.instagramBusinessAccount?.id)));
-    const hasPages = discoveredPages.length > 0;
-
-    // Only save as connected Instagram account if a REAL Page or Instagram Business Account was found
-    if (hasLinkedInstagram || hasPages) {
-      const finalDisplayAcct = igUsername ? `@${igUsername}` : (selectedPageName || igAccountId);
+    // Fallback if no pages found
+    if (!selectedPageId && !igUsername) {
       try {
-        const { saveServerSocialAccount } = await import('@/lib/serverStore');
-        saveServerSocialAccount({
+        const meRes = await axios.get('https://graph.facebook.com/v19.0/me', {
+          params: { fields: 'id,name', access_token: accessToken },
+        });
+        if (meRes.data?.name) selectedPageName = meRes.data.name;
+        if (meRes.data?.id) igAccountId = meRes.data.id;
+      } catch (meErr) {
+        console.warn('me profile query notice:', meErr);
+      }
+    }
+
+    const finalDisplayAcct = igUsername ? `@${igUsername}` : (selectedPageName || igAccountId);
+
+    // Save to persistent server store
+    try {
+      const { saveServerSocialAccount } = await import('@/lib/serverStore');
+      saveServerSocialAccount({
+        id: `sa_${clientId}_instagram`,
+        clientId,
+        platform: 'instagram',
+        platformAccountId: finalDisplayAcct,
+        accessToken,
+        pageId: selectedPageId,
+        pageName: selectedPageName,
+        tokenExpiresAt: expiresAt.toISOString(),
+      });
+    } catch (storeErr) {
+      console.warn('Server store save notice:', storeErr);
+    }
+
+    try {
+      await prisma.socialAccount.upsert({
+        where: { id: `sa_${clientId}_instagram` },
+        update: {
+          platformAccountId: finalDisplayAcct,
+          accessToken,
+          tokenExpiresAt: expiresAt,
+        },
+        create: {
           id: `sa_${clientId}_instagram`,
           clientId,
           platform: 'instagram',
           platformAccountId: finalDisplayAcct,
           accessToken,
-          pageId: selectedPageId,
-          pageName: selectedPageName,
-          tokenExpiresAt: expiresAt.toISOString(),
-        });
-      } catch (storeErr) {
-        console.warn('Server store save notice:', storeErr);
-      }
-
-      try {
-        await prisma.socialAccount.upsert({
-          where: { id: `sa_${clientId}_instagram` },
-          update: {
-            platformAccountId: finalDisplayAcct,
-            accessToken,
-            tokenExpiresAt: expiresAt,
-          },
-          create: {
-            id: `sa_${clientId}_instagram`,
-            clientId,
-            platform: 'instagram',
-            platformAccountId: finalDisplayAcct,
-            accessToken,
-            tokenExpiresAt: expiresAt,
-          },
-        });
-      } catch (dbErr) {
-        console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
-      }
+          tokenExpiresAt: expiresAt,
+        },
+      });
+    } catch (dbErr) {
+      console.warn('Postgres database save warning (client state will persist in browser):', dbErr);
     }
 
     const discoveredPagesJson = JSON.stringify(discoveredPages);
     const returnUrl = `${origin}/settings?connected=instagram&account=${encodeURIComponent(String(igAccountId))}&username=${encodeURIComponent(igUsername)}&token=${encodeURIComponent(accessToken)}&clientId=${encodeURIComponent(clientId)}&pageId=${encodeURIComponent(selectedPageId)}&pageName=${encodeURIComponent(selectedPageName)}`;
     const dashboardUrl = `${origin}/?connected=instagram&clientId=${encodeURIComponent(clientId)}&pageId=${encodeURIComponent(selectedPageId)}`;
-
-    // CASE 1: No Facebook Pages found OR missing pages_show_list permission
-    if (!hasPages) {
-      return new Response(
-        `<!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Meta Setup Notice - Facebook Pages Required</title>
-            <style>
-              * { box-sizing: border-box; }
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                background: #09090b;
-                color: #f4f4f5;
-                margin: 0;
-                padding: 24px 16px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 100vh;
-              }
-              .card {
-                max-width: 480px;
-                width: 100%;
-                background: #141416;
-                border: 1px solid #27272a;
-                border-radius: 24px;
-                padding: 32px 24px;
-                text-align: center;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.7);
-              }
-              .badge {
-                display: inline-block;
-                padding: 4px 10px;
-                border-radius: 9999px;
-                font-size: 11px;
-                font-weight: 700;
-                background: rgba(245, 158, 11, 0.15);
-                color: #f59e0b;
-                border: 1px solid rgba(245, 158, 11, 0.3);
-                margin-bottom: 12px;
-              }
-              h3 { font-size: 20px; font-weight: 800; margin: 0 0 8px; color: #fff; }
-              p { color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
-              .user-box {
-                background: #1c1c1f;
-                border: 1px solid #2f2f35;
-                border-radius: 12px;
-                padding: 10px 14px;
-                font-size: 12px;
-                color: #e4e4e7;
-                margin-bottom: 16px;
-                text-align: left;
-              }
-              .steps-box {
-                text-align: left;
-                background: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 14px;
-                padding: 14px;
-                margin-bottom: 20px;
-                font-size: 12px;
-                color: #d4d4d8;
-              }
-              .steps-box ol { margin: 6px 0 0; padding-left: 18px; }
-              .steps-box li { margin-bottom: 8px; line-height: 1.4; }
-              .steps-box a { color: #38bdf8; text-decoration: underline; font-weight: 600; }
-              .btn {
-                display: block;
-                width: 100%;
-                padding: 12px;
-                border-radius: 12px;
-                font-weight: 700;
-                font-size: 13px;
-                text-decoration: none;
-                cursor: pointer;
-                border: none;
-                transition: all 0.15s ease;
-                text-align: center;
-              }
-              .btn-primary {
-                background: #10b981;
-                color: #000;
-                margin-bottom: 10px;
-              }
-              .btn-primary:hover { background: #34d399; }
-              .btn-secondary {
-                background: #27272a;
-                color: #fff;
-              }
-              .btn-secondary:hover { background: #3f3f46; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <span class="badge">Facebook Login Successful</span>
-              <h3>No Linked Facebook Page Found</h3>
-              
-              <div class="user-box">
-                Logged in as: <strong>${meUserName || 'Facebook User'}</strong> <span style="color:#71717a;">(ID: ${meUserId || igAccountId})</span>
-              </div>
-
-              <p>
-                ${!hasPagesShowList
-                  ? 'Meta requires the <strong>pages_show_list</strong> permission in your App Use Case so our app can detect your Facebook Pages and linked Instagram accounts.'
-                  : 'Meta Graph API requires your Instagram account to be a <strong>Professional Account (Creator or Business)</strong> and linked to a <strong>Facebook Page</strong> to pull live posts and views.'}
-              </p>
-
-              <div class="steps-box">
-                <strong>How to complete connection (takes 1 minute):</strong>
-                <ol>
-                  ${!hasPagesShowList ? `
-                    <li>Open <a href="https://developers.facebook.com/apps/1532121481550639/use-cases/" target="_blank" rel="noreferrer">Meta App 1532121481550639 Use Cases ↗</a></li>
-                    <li>Under <strong>Authentication and account creation</strong>, click <strong>Customize</strong> (or Permissions).</li>
-                    <li>Add <strong>pages_show_list</strong> and <strong>instagram_basic</strong>, then click Save.</li>
-                  ` : `
-                    <li>If you don't have a Facebook Page, create one in 30 seconds at <a href="https://facebook.com/pages/create" target="_blank" rel="noreferrer">facebook.com/pages/create ↗</a></li>
-                    <li>In your Instagram mobile app: Go to <strong>Settings</strong> → <strong>Account Type</strong> → Switch to <strong>Professional Account</strong> (Creator or Business).</li>
-                    <li>In Instagram app: Tap <strong>Edit Profile</strong> → <strong>Page</strong> → Connect your Facebook Page.</li>
-                  `}
-                </ol>
-              </div>
-
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <a href="${origin}/settings" class="btn btn-primary">Return to Settings & Re-Scan</a>
-                <a href="https://developers.facebook.com/apps/1532121481550639/use-cases/" target="_blank" rel="noreferrer" class="btn btn-secondary">Open Meta Developer Console ↗</a>
-              </div>
-            </div>
-          </body>
-        </html>`,
-        { headers: { 'Content-Type': 'text/html' } }
-      );
-    }
-
-    // CASE 2: Facebook Pages found, but none has an Instagram Business account linked
-    if (hasPages && !hasLinkedInstagram) {
-      return new Response(
-        `<!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Meta Setup Notice - Link Instagram to Page</title>
-            <style>
-              * { box-sizing: border-box; }
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                background: #09090b;
-                color: #f4f4f5;
-                margin: 0;
-                padding: 24px 16px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 100vh;
-              }
-              .card {
-                max-width: 480px;
-                width: 100%;
-                background: #141416;
-                border: 1px solid #27272a;
-                border-radius: 24px;
-                padding: 32px 24px;
-                text-align: center;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.7);
-              }
-              .badge {
-                display: inline-block;
-                padding: 4px 10px;
-                border-radius: 9999px;
-                font-size: 11px;
-                font-weight: 700;
-                background: rgba(56, 189, 248, 0.15);
-                color: #38bdf8;
-                border: 1px solid rgba(56, 189, 248, 0.3);
-                margin-bottom: 12px;
-              }
-              h3 { font-size: 20px; font-weight: 800; margin: 0 0 8px; color: #fff; }
-              p { color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
-              .page-box {
-                background: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 14px;
-                padding: 12px 14px;
-                margin-bottom: 16px;
-                text-align: left;
-                font-size: 12px;
-              }
-              .btn {
-                display: block;
-                width: 100%;
-                padding: 12px;
-                border-radius: 12px;
-                font-weight: 700;
-                font-size: 13px;
-                text-decoration: none;
-                cursor: pointer;
-                border: none;
-                transition: all 0.15s ease;
-                text-align: center;
-              }
-              .btn-primary {
-                background: #10b981;
-                color: #000;
-                margin-bottom: 10px;
-              }
-              .btn-primary:hover { background: #34d399; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <span class="badge">Page Found</span>
-              <h3>Link Instagram to Facebook Page</h3>
-              <p>
-                We found your Facebook Page <strong>${selectedPageName}</strong>, but there is no Instagram Business Account linked to it yet.
-              </p>
-
-              <div class="page-box">
-                <strong>Next Step:</strong>
-                <ol style="margin: 6px 0 0; padding-left: 18px; line-height: 1.5;">
-                  <li>Open Facebook.com and switch to your Page <strong>${selectedPageName}</strong>.</li>
-                  <li>Go to <strong>Settings</strong> → <strong>Linked Accounts</strong> → <strong>Instagram</strong>.</li>
-                  <li>Click <strong>Connect Account</strong> and log into your Instagram profile.</li>
-                  <li>Return to Koko Digital Studio and click Scan Pages!</li>
-                </ol>
-              </div>
-
-              <a href="${returnUrl}" class="btn btn-primary">Return to Settings</a>
-            </div>
-          </body>
-        </html>`,
-        { headers: { 'Content-Type': 'text/html' } }
-      );
-    }
 
     return new Response(
       `<!DOCTYPE html>
@@ -754,24 +259,18 @@ export async function GET(request: Request) {
                 Return to Settings
               </a>
             </div>
-            <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">5</strong> seconds...</p>
+            <p id="countdown" style="color: #555; font-size: 12px; margin-top: 20px;">Closing window in <strong style="color: #888;" id="timer">4</strong> seconds...</p>
           </div>
           <script>
-            // 0. Set persistent cookies (1 year duration) scoped strictly to client
+            // 0. Set persistent cookies scoped to client
             var cookieAge = 31536000;
             document.cookie = "koko_selected_client_id=${encodeURIComponent(clientId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
             document.cookie = "koko_session_ig_connected_${encodeURIComponent(clientId)}=true; path=/; max-age=" + cookieAge + "; SameSite=Lax";
-            document.cookie = "koko_session_ig_account_${encodeURIComponent(clientId)}=${encodeURIComponent(igUsername ? '@' + igUsername : igAccountId)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
+            document.cookie = "koko_session_ig_account_${encodeURIComponent(clientId)}=${encodeURIComponent(finalDisplayAcct)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
             document.cookie = "koko_active_ig_token_${encodeURIComponent(clientId)}=${encodeURIComponent(accessToken)}; path=/; max-age=" + cookieAge + "; SameSite=Lax";
-            // Invalidate legacy unscoped global cookies so they never bleed into other accounts
-            document.cookie = "koko_session_ig_connected=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-            document.cookie = "koko_session_ig_account=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
             // 1. Save directly to domain localStorage
             try {
-              if ('${clientId}') {
-                localStorage.setItem('koko_selected_client_id', '${clientId}');
-              }
               var pages = ${discoveredPagesJson};
               localStorage.setItem('koko_meta_available_pages_${clientId}', JSON.stringify(pages));
               if ('${selectedPageId}') {
@@ -782,14 +281,7 @@ export async function GET(request: Request) {
               var stored = localStorage.getItem('koko_connected_social_accounts');
               var list = stored ? JSON.parse(stored) : [];
               var updated = list.filter(function(a) { return !(a.clientId === '${clientId}' && a.platform === 'instagram'); });
-              var pendingUsername = localStorage.getItem('koko_pending_username_${clientId}_instagram');
-              var displayAcct = '${igUsername ? '@' + igUsername : ''}';
-              if (!displayAcct && pendingUsername) {
-                displayAcct = pendingUsername.startsWith('@') ? pendingUsername : '@' + pendingUsername;
-              }
-              if (!displayAcct) {
-                displayAcct = '${selectedPageName || igAccountId}';
-              }
+              var displayAcct = '${finalDisplayAcct.replace(/'/g, "\\'")}';
               updated.push({
                 id: 'sa_${clientId}_instagram',
                 clientId: '${clientId}',
@@ -845,7 +337,7 @@ export async function GET(request: Request) {
             });
 
             // 3. Gentle countdown timer
-            var remaining = 5;
+            var remaining = 4;
             var timerEl = document.getElementById('timer');
             var interval = setInterval(function() {
               remaining--;
