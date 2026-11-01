@@ -486,30 +486,15 @@ export default function DashboardPage() {
     if (!hasTikTokConnected) {
       allPosts = allPosts.filter((p) => (p.platform || '').toLowerCase() !== 'tiktok');
     } else {
-      const hasRealTtPosts = allPosts.some(
+      // Strictly purge any mock Unsplash posts or placeholder blueprints so only genuine TikTok creator posts display
+      allPosts = allPosts.filter(
         (p) =>
-          (p.platform || '').toLowerCase() === 'tiktok' &&
-          !p.thumbnailUrl?.includes('unsplash') &&
-          !String(p.id || '').includes('_1') &&
-          !String(p.id || '').includes('_2')
+          String(p.platform || '').toLowerCase() !== 'tiktok' ||
+          (!p.thumbnailUrl?.includes('unsplash') &&
+           !String(p.id || '').includes('_1') &&
+           !String(p.id || '').includes('_2') &&
+           !String(p.caption || '').includes('#viral #reels #music'))
       );
-
-      if (hasRealTtPosts) {
-        allPosts = allPosts.filter(
-          (p) =>
-            String(p.platform || '').toLowerCase() !== 'tiktok' ||
-            (!p.thumbnailUrl?.includes('unsplash') &&
-             !String(p.id || '').includes('_1') &&
-             !String(p.id || '').includes('_2'))
-        );
-      } else if (allPosts.filter((p) => (p.platform || '').toLowerCase() === 'tiktok').length === 0) {
-        const handle = connectedPlatforms.tiktokHandle || '';
-        if (handle) {
-          const baseTtViews = Number(base.ttViews || 0) > 0 ? Number(base.ttViews) : Math.round(312000 * periodScale);
-          const generatedTtPosts = generateTikTokPortfolio(handle, sDate, eDate, baseTtViews);
-          allPosts = [...allPosts, ...generatedTtPosts];
-        }
-      }
     }
 
     if (!hasInstagramConnected) {
