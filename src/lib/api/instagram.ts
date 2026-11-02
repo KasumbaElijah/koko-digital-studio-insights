@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { fetchInstagramPublicProfile } from './instagramScraper';
+import { resolveInstagramUsername } from '../managedPages';
 
 export interface InstagramMetricResult {
   followersGrowth: number;
@@ -14,6 +16,7 @@ export interface InstagramMetricResult {
     likesCount: number;
     commentsCount: number;
     sharesCount: number;
+    newFollowers?: number;
     thumbnailUrl?: string | null;
     publishedAt: string;
   }>;
@@ -27,6 +30,7 @@ export async function fetchInstagramMetrics(
   targetPageId?: string
 ): Promise<InstagramMetricResult> {
   const cleanAccountId = (platformAccountId || '').replace(/^@/, '').trim();
+  const resolvedUsername = resolveInstagramUsername(cleanAccountId, targetPageId);
 
   if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
     return {
@@ -37,7 +41,8 @@ export async function fetchInstagramMetrics(
     };
   }
 
-  const isRealToken = accessToken &&
+  const isRealToken =
+    Boolean(accessToken) &&
     !accessToken.startsWith('mock_') &&
     !accessToken.startsWith('ig_direct_') &&
     !accessToken.startsWith('active_') &&
@@ -45,7 +50,7 @@ export async function fetchInstagramMetrics(
 
   try {
     let totalViews = 0;
-    let followersGrowth = 0;
+    let followersCount = 0;
     let postsList: InstagramMetricResult['posts'] = [];
 
     const startMs = startDate.getTime();
@@ -57,20 +62,45 @@ export async function fetchInstagramMetrics(
       return !isNaN(t) && t >= startMs && t <= endMs;
     };
 
+    const proxyImageUrl = (rawUrl?: string | null) => {
+      if (!rawUrl) return null;
+      if (rawUrl.startsWith('/api/image-proxy')) return rawUrl;
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        return `/api/image-proxy?url=${encodeURIComponent(rawUrl)}`;
+      }
+      return rawUrl;
+    };
+
     const mapMediaItem = (m: any, idx: number) => {
       const likes = Number(m.like_count) || 0;
       const comments = Number(m.comments_count) || 0;
-      const isVideo = m.media_type === 'VIDEO';
+      const isVideo =
+        m.media_type === 'VIDEO' || m.media_product_type === 'REELS';
       const isCarousel = m.media_type === 'CAROUSEL_ALBUM';
-      const estimatedViews = isVideo ? Math.max(likes * 14 + comments * 25, 450) : Math.max(likes * 9 + comments * 15, 200);
+
+      const rawPlays = Number(
+        m.play_count ?? m.video_views ?? m.impressions ?? m.reach ?? 0
+      );
+      const computedViews =
+        rawPlays > 0
+          ? rawPlays
+          : likes > 0 || comments > 0
+          ? isVideo
+            ? likes * 14 + comments * 22
+            : likes * 9 + comments * 15
+          : 0;
 
       const inRange = isInDateRange(m.timestamp);
       if (inRange) {
-        totalViews += estimatedViews;
+        totalViews += computedViews;
       }
 
       const rawCaption = m.caption ? String(m.caption).trim() : '';
-      const isStory = m.media_product_type === 'STORY' || m.media_type === 'STORY' || rawCaption.toLowerCase().includes('#story') || rawCaption.toLowerCase().includes('#stories');
+      const isStory =
+        m.media_product_type === 'STORY' ||
+        m.media_type === 'STORY' ||
+        rawCaption.toLowerCase().includes('#story') ||
+        rawCaption.toLowerCase().includes('#stories');
 
       const format: 'Image' | 'Videos' | 'Graphic' | 'Stories' = isStory
         ? 'Stories'
@@ -80,107 +110,97 @@ export async function fetchInstagramMetrics(
         ? 'Graphic'
         : 'Image';
 
-      const previewThumb = m.thumbnail_url || m.media_url || null;
+      const previewThumb = proxyImageUrl(m.thumbnail_url || m.media_url || null);
       const displayTitle = rawCaption
-        ? (rawCaption.length > 75 ? `${rawCaption.substring(0, 75)}...` : rawCaption)
-        : (isVideo ? 'High Traction Video Reel' : 'Creative Studio Post');
+        ? rawCaption.length > 75
+          ? `${rawCaption.substring(0, 75)}...`
+          : rawCaption
+        : `Instagram ${format === 'Videos' ? 'Reel' : 'Post'} #${idx + 1}`;
 
       return {
-        postId: m.id || `ig_live_${idx}`,
+        postId: m.id || `ig_graph_${idx}`,
         title: displayTitle,
         caption: rawCaption,
         permalink: m.permalink || '',
         contentFormat: format,
-        viewsCount: estimatedViews,
+        viewsCount: computedViews,
         likesCount: likes,
         commentsCount: comments,
-        sharesCount: Math.round(likes * 0.12),
+        sharesCount: Number(m.shares_count) || 0,
+        newFollowers: 0,
         thumbnailUrl: previewThumb,
         publishedAt: m.timestamp || new Date().toISOString(),
-        inRange,
       };
     };
 
-    // Strategy 1: Instagram User Access Token (when real Meta token is present)
+    // Strategy 1: Instagram User Access Token (only when targeting primary account or matching username)
     if (isRealToken) {
       try {
         const igUserMediaRes = await axios.get('https://graph.instagram.com/me/media', {
           params: {
-            fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,username',
+            fields:
+              'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,username',
             access_token: accessToken,
             limit: 25,
           },
-          timeout: 10000,
+          timeout: 8000,
         });
 
         const items = igUserMediaRes.data?.data || [];
         if (items.length > 0) {
-          postsList = items.map(mapMediaItem);
-        }
-
-        // Also query active user stories
-        try {
-          const userStoriesRes = await axios.get('https://graph.instagram.com/me/stories', {
-            params: {
-              fields: 'id,caption,media_type,media_url,permalink,timestamp',
-              access_token: accessToken,
-              limit: 25,
-            },
-            timeout: 6000,
-          });
-          const storyItems = userStoriesRes.data?.data || [];
-          if (storyItems.length > 0) {
-            const liveStories = storyItems.map((s: any, idx: number) => ({
-              postId: s.id || `ig_story_${idx}`,
-              title: s.caption || 'Daily Instagram Story',
-              caption: s.caption || '',
-              permalink: s.permalink || '',
-              contentFormat: 'Stories' as const,
-              viewsCount: Math.floor(Math.random() * 450) + 250,
-              likesCount: Math.floor(Math.random() * 35) + 15,
-              commentsCount: Math.floor(Math.random() * 8) + 2,
-              sharesCount: Math.floor(Math.random() * 5) + 1,
-              thumbnailUrl: s.media_url || null,
-              publishedAt: s.timestamp || new Date().toISOString(),
-              inRange: true,
-            }));
-            postsList = [...postsList, ...liveStories];
+          const mediaOwner = String(items[0]?.username || '').toLowerCase();
+          if (
+            !resolvedUsername ||
+            !mediaOwner ||
+            mediaOwner === resolvedUsername.toLowerCase()
+          ) {
+            postsList = items.map(mapMediaItem);
           }
-        } catch (stErr) {}
-      } catch (userTokenErr) {}
+        }
+      } catch {}
     }
 
-    // Strategy 2: Meta Facebook Graph API
-    if (postsList.length === 0) {
+    // Strategy 2: Meta Facebook Graph API (Pages, linked IG Business Account, & Business Discovery)
+    if (postsList.length === 0 && isRealToken) {
       let targetIgId = cleanAccountId;
       let targetToken = accessToken;
       let linkedPage: any = null;
+      let anyBusinessIgId = '';
+      let anyBusinessToken = accessToken;
 
       try {
         const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
           params: {
-            fields: 'id,name,access_token,instagram_business_account{id,username,name,followers_count}',
+            fields:
+              'id,name,access_token,instagram_business_account{id,username,name,followers_count}',
             access_token: accessToken,
           },
-          timeout: 10000,
+          timeout: 8000,
         });
 
         const pages = meAccountsRes.data?.data || [];
-
-        if (targetPageId) {
-          linkedPage = pages.find((p: any) => p.id === targetPageId || p.instagram_business_account?.id === targetPageId);
+        const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
+        if (pageWithIg?.instagram_business_account?.id) {
+          anyBusinessIgId = pageWithIg.instagram_business_account.id;
+          anyBusinessToken = pageWithIg.access_token || accessToken;
         }
 
-        if (!linkedPage && cleanAccountId) {
-          linkedPage = pages.find((p: any) =>
-            p.id === cleanAccountId ||
-            p.instagram_business_account?.id === cleanAccountId ||
-            p.instagram_business_account?.username?.toLowerCase() === cleanAccountId.toLowerCase()
+        if (targetPageId) {
+          linkedPage = pages.find(
+            (p: any) =>
+              p.id === targetPageId ||
+              p.instagram_business_account?.id === targetPageId
           );
         }
 
-        if (!linkedPage) {
-          linkedPage = pages.find((p: any) => p.instagram_business_account?.id) || pages[0];
+        if (!linkedPage && (resolvedUsername || cleanAccountId)) {
+          const targetLower = (resolvedUsername || cleanAccountId).toLowerCase();
+          linkedPage = pages.find(
+            (p: any) =>
+              p.id === cleanAccountId ||
+              p.instagram_business_account?.id === cleanAccountId ||
+              p.instagram_business_account?.username?.toLowerCase() === targetLower
+          );
         }
 
         if (linkedPage?.instagram_business_account?.id) {
@@ -188,8 +208,8 @@ export async function fetchInstagramMetrics(
           if (linkedPage.access_token) {
             targetToken = linkedPage.access_token;
           }
-          if (linkedPage.instagram_business_account.followers_count) {
-            followersGrowth = linkedPage.instagram_business_account.followers_count;
+          if (typeof linkedPage.instagram_business_account.followers_count === 'number') {
+            followersCount = linkedPage.instagram_business_account.followers_count;
           }
         } else if (linkedPage?.id) {
           targetIgId = linkedPage.id;
@@ -197,197 +217,247 @@ export async function fetchInstagramMetrics(
             targetToken = linkedPage.access_token;
           }
         }
-      } catch (accErr) {}
+      } catch {}
 
-      // Fallback 2A: Direct Page Query (in case accessToken is a Page Access Token where /me/accounts is not available)
-      if (!linkedPage && targetPageId) {
+      if (!linkedPage && targetPageId && /^\d+$/.test(targetPageId)) {
         try {
-          const pageRes = await axios.get(`https://graph.facebook.com/v19.0/${targetPageId}`, {
-            params: {
-              fields: 'id,name,instagram_business_account{id,username,followers_count}',
-              access_token: targetToken,
-            },
-            timeout: 8000,
-          });
+          const pageRes = await axios.get(
+            `https://graph.facebook.com/v19.0/${targetPageId}`,
+            {
+              params: {
+                fields: 'id,name,instagram_business_account{id,username,followers_count}',
+                access_token: targetToken,
+              },
+              timeout: 6000,
+            }
+          );
           if (pageRes.data?.instagram_business_account?.id) {
             targetIgId = pageRes.data.instagram_business_account.id;
-            if (pageRes.data.instagram_business_account.followers_count) {
-              followersGrowth = pageRes.data.instagram_business_account.followers_count;
+            if (!anyBusinessIgId) anyBusinessIgId = targetIgId;
+            if (typeof pageRes.data.instagram_business_account.followers_count === 'number') {
+              followersCount = pageRes.data.instagram_business_account.followers_count;
             }
           }
-        } catch (pageErr) {}
+        } catch {}
       }
 
-      // Fallback 2B: Query /me directly for Page or Instagram Business node
-      if (!linkedPage && (!targetIgId || !/^\d+$/.test(targetIgId))) {
-        try {
-          const meRes = await axios.get('https://graph.facebook.com/v19.0/me', {
-            params: {
-              fields: 'id,name,instagram_business_account{id,username,followers_count}',
-              access_token: targetToken,
-            },
-            timeout: 8000,
-          });
-          if (meRes.data?.instagram_business_account?.id) {
-            targetIgId = meRes.data.instagram_business_account.id;
-            if (meRes.data.instagram_business_account.followers_count) {
-              followersGrowth = meRes.data.instagram_business_account.followers_count;
-            }
-          } else if (meRes.data?.id) {
-            targetIgId = meRes.data.id;
-          }
-        } catch (meErr) {}
-      }
-
-      // Graph API media requires a numeric node ID or 'me'
-      const isValidGraphNode = targetIgId && (/^\d+$/.test(targetIgId) || targetIgId === 'me');
+      const isValidGraphNode = Boolean(targetIgId && /^\d+$/.test(targetIgId));
 
       if (isValidGraphNode) {
         try {
-          const mediaRes = await axios.get(`https://graph.facebook.com/v19.0/${targetIgId}/media`, {
-            params: {
-              fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
-              access_token: targetToken,
-              limit: 25,
-            },
-            timeout: 10000,
-          });
+          const mediaRes = await axios.get(
+            `https://graph.facebook.com/v19.0/${targetIgId}/media`,
+            {
+              params: {
+                fields:
+                  'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
+                access_token: targetToken,
+                limit: 25,
+              },
+              timeout: 8000,
+            }
+          );
 
           const items = mediaRes.data?.data || [];
           if (items.length > 0) {
             postsList = items.map(mapMediaItem);
           }
 
-          // Also query active business stories
+          // Query active business stories if present
           try {
-            const bStoriesRes = await axios.get(`https://graph.facebook.com/v19.0/${targetIgId}/stories`, {
-              params: {
-                fields: 'id,caption,media_type,media_url,permalink,timestamp',
-                access_token: targetToken,
-                limit: 25,
-              },
-              timeout: 6000,
-            });
+            const bStoriesRes = await axios.get(
+              `https://graph.facebook.com/v19.0/${targetIgId}/stories`,
+              {
+                params: {
+                  fields: 'id,caption,media_type,media_url,permalink,timestamp',
+                  access_token: targetToken,
+                  limit: 25,
+                },
+                timeout: 5000,
+              }
+            );
             const bStoryItems = bStoriesRes.data?.data || [];
             if (bStoryItems.length > 0) {
               const bStories = bStoryItems.map((s: any, idx: number) => ({
                 postId: s.id || `ig_story_b_${idx}`,
-                title: s.caption || 'Daily Instagram Story',
+                title: s.caption || 'Instagram Story',
                 caption: s.caption || '',
                 permalink: s.permalink || '',
                 contentFormat: 'Stories' as const,
-                viewsCount: Math.floor(Math.random() * 450) + 250,
-                likesCount: Math.floor(Math.random() * 35) + 15,
-                commentsCount: Math.floor(Math.random() * 8) + 2,
-                sharesCount: Math.floor(Math.random() * 5) + 1,
-                thumbnailUrl: s.media_url || null,
+                viewsCount: 0,
+                likesCount: 0,
+                commentsCount: 0,
+                sharesCount: 0,
+                newFollowers: 0,
+                thumbnailUrl: proxyImageUrl(s.media_url || null),
                 publishedAt: s.timestamp || new Date().toISOString(),
-                inRange: true,
               }));
               postsList = [...postsList, ...bStories];
             }
-          } catch (stErr) {}
-        } catch (mediaErr) {
-          if (/^[a-zA-Z0-9._]+$/.test(cleanAccountId) && targetIgId !== cleanAccountId) {
-            try {
-              const discRes = await axios.get(`https://graph.facebook.com/v19.0/${targetIgId}`, {
-                params: {
-                  fields: `business_discovery.username(${cleanAccountId}){id,username,name,followers_count,media_count,media{id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count}}`,
-                  access_token: targetToken,
-                },
-                timeout: 10000,
-              });
+          } catch {}
+        } catch {}
+      }
 
-              const discItems = discRes.data?.business_discovery?.media?.data || [];
-              if (discItems.length > 0) {
-                postsList = discItems.map(mapMediaItem);
-              }
-              if (discRes.data?.business_discovery?.followers_count) {
-                followersGrowth = discRes.data.business_discovery.followers_count;
-              }
-            } catch (discErr) {}
-          }
+      // Strategy 2B: Graph API Business Discovery for handle-based lookups whenever any IG Business node exists
+      const discoveryHostId = anyBusinessIgId || (isValidGraphNode ? targetIgId : '');
+      if (
+        postsList.length === 0 &&
+        discoveryHostId &&
+        resolvedUsername &&
+        /^[a-zA-Z0-9._]+$/.test(resolvedUsername)
+      ) {
+        try {
+          const discRes = await axios.get(
+            `https://graph.facebook.com/v19.0/${discoveryHostId}`,
+            {
+              params: {
+                fields: `business_discovery.username(${resolvedUsername}){id,username,name,followers_count,media_count,media{id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count}}`,
+                access_token: anyBusinessToken,
+              },
+              timeout: 8000,
+            }
+          );
 
-          if (postsList.length === 0) {
-            try {
-              const fbPostsRes = await axios.get(`https://graph.facebook.com/v19.0/${targetIgId}/posts`, {
-                params: {
-                  fields: 'id,message,created_time,full_picture,permalink_url,shares,likes.summary(true),comments.summary(true)',
-                  access_token: targetToken,
-                  limit: 25,
-                },
-                timeout: 8000,
-              });
-              const rawFbPosts = fbPostsRes.data?.data || [];
-              if (rawFbPosts.length > 0) {
-                postsList = rawFbPosts.map((p: any, idx: number) => {
-                  const likes = p.likes?.summary?.total_count || 0;
-                  const comments = p.comments?.summary?.total_count || 0;
-                  const shares = p.shares?.count || 0;
-                  const views = Math.max(likes * 12 + comments * 20, 250);
-                  return {
-                    postId: p.id || `fb_post_${idx}`,
-                    title: p.message ? (p.message.length > 70 ? `${p.message.slice(0, 70)}...` : p.message) : 'Page Post',
-                    caption: p.message || '',
-                    permalink: p.permalink_url || '',
-                    contentFormat: 'Image' as const,
-                    viewsCount: views,
-                    likesCount: likes,
-                    commentsCount: comments,
-                    sharesCount: shares,
-                    thumbnailUrl: p.full_picture || null,
-                    publishedAt: p.created_time || new Date().toISOString(),
-                    inRange: true,
-                  };
-                });
-              }
-            } catch (fbPostsErr) {}
+          const discItems = discRes.data?.business_discovery?.media?.data || [];
+          if (discItems.length > 0) {
+            postsList = discItems.map(mapMediaItem);
           }
+          if (typeof discRes.data?.business_discovery?.followers_count === 'number') {
+            followersCount = discRes.data.business_discovery.followers_count;
+          }
+        } catch {}
+      }
+
+      // Strategy 2C: Direct Facebook Page Posts if targetIgId is a numeric Facebook Page ID
+      if (postsList.length === 0 && isValidGraphNode) {
+        try {
+          const fbPostsRes = await axios.get(
+            `https://graph.facebook.com/v19.0/${targetIgId}/posts`,
+            {
+              params: {
+                fields:
+                  'id,message,created_time,full_picture,permalink_url,shares,likes.summary(true),comments.summary(true)',
+                access_token: targetToken,
+                limit: 25,
+              },
+              timeout: 7000,
+            }
+          );
+          const rawFbPosts = fbPostsRes.data?.data || [];
+          if (rawFbPosts.length > 0) {
+            postsList = rawFbPosts.map((p: any, idx: number) => {
+              const likes = Number(p.likes?.summary?.total_count) || 0;
+              const comments = Number(p.comments?.summary?.total_count) || 0;
+              const shares = Number(p.shares?.count) || 0;
+              const views =
+                likes > 0 || comments > 0 ? likes * 12 + comments * 20 : 0;
+              return {
+                postId: p.id || `fb_post_${idx}`,
+                title: p.message
+                  ? p.message.length > 70
+                    ? `${p.message.slice(0, 70)}...`
+                    : p.message
+                  : 'Page Post',
+                caption: p.message || '',
+                permalink: p.permalink_url || '',
+                contentFormat: 'Image' as const,
+                viewsCount: views,
+                likesCount: likes,
+                commentsCount: comments,
+                sharesCount: shares,
+                newFollowers: 0,
+                thumbnailUrl: proxyImageUrl(p.full_picture || null),
+                publishedAt: p.created_time || new Date().toISOString(),
+              };
+            });
+          }
+        } catch {}
+      }
+    }
+
+    // Strategy 3: Live Public Instagram Profile & Post Extraction (100% real data, zero mock blueprints)
+    if (postsList.length === 0 || followersCount === 0) {
+      const publicProfile = await fetchInstagramPublicProfile(
+        cleanAccountId,
+        targetPageId
+      );
+      if (publicProfile.success) {
+        if (followersCount === 0 && publicProfile.followerCount != null) {
+          followersCount = Number(publicProfile.followerCount) || 0;
+        }
+        if (postsList.length === 0 && publicProfile.posts.length > 0) {
+          postsList = publicProfile.posts.map((p) => ({
+            postId: p.postId,
+            title: p.title,
+            caption: p.caption,
+            permalink: p.permalink || '',
+            contentFormat: p.contentFormat,
+            viewsCount: p.viewsCount,
+            likesCount: p.likesCount,
+            commentsCount: p.commentsCount,
+            sharesCount: p.sharesCount,
+            newFollowers: 0,
+            thumbnailUrl: p.thumbnailUrl,
+            publishedAt: p.publishedAt,
+          }));
         }
       }
     }
 
-    // Strategy 3: No fallback mock data — keep postsList strictly authentic
-    // Only real posts returned by Meta Graph API or added manually will be displayed.
-
+    // Optional Graph API account-level insights when numeric IG business ID and real token are valid
     if (cleanAccountId && /^\d+$/.test(cleanAccountId) && isRealToken) {
       try {
-        const fbRes = await axios.get(`https://graph.facebook.com/v19.0/${cleanAccountId}/insights`, {
-          params: {
-            metric: 'impressions,reach,profile_views',
-            period: 'day',
-            since: Math.floor(startDate.getTime() / 1000),
-            until: Math.floor(endDate.getTime() / 1000),
-            access_token: accessToken,
-          },
-          timeout: 8000,
-        });
+        const fbRes = await axios.get(
+          `https://graph.facebook.com/v19.0/${cleanAccountId}/insights`,
+          {
+            params: {
+              metric: 'impressions,reach,profile_views',
+              period: 'day',
+              since: Math.floor(startDate.getTime() / 1000),
+              until: Math.floor(endDate.getTime() / 1000),
+              access_token: accessToken,
+            },
+            timeout: 6000,
+          }
+        );
         const data = fbRes.data?.data || [];
-        data.forEach((metric: { name: string; values: Array<{ value: number }> }) => {
-          const sum = metric.values?.reduce((acc, curr) => acc + (curr.value || 0), 0) || 0;
-          if (metric.name === 'impressions' || metric.name === 'reach') totalViews += sum;
-        });
-      } catch (insightErr) {}
+        let insightsViews = 0;
+        data.forEach(
+          (metric: { name: string; values: Array<{ value: number }> }) => {
+            const sum =
+              metric.values?.reduce((acc, curr) => acc + (curr.value || 0), 0) ||
+              0;
+            if (metric.name === 'impressions' || metric.name === 'reach') {
+              insightsViews += sum;
+            }
+          }
+        );
+        if (insightsViews > 0) {
+          totalViews = insightsViews;
+        }
+      } catch {}
     }
 
-    const daysDiff = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-    const libraryViews = postsList.reduce((acc, p) => acc + (p.viewsCount || 0), 0);
-    const isElijahAccount = cleanAccountId.toLowerCase().includes('elijah') || (targetPageId && targetPageId.includes('4360643764182218'));
-    const effectiveViews = totalViews > 0
-      ? totalViews
-      : (libraryViews > 0 ? libraryViews : (isElijahAccount ? 1100000 : 0));
-
-    const scaledFollowers = followersGrowth
-      ? Math.round(followersGrowth * (daysDiff / 30))
-      : (isElijahAccount ? 7700 : (postsList.length > 0 ? Math.max(1, Math.round(effectiveViews * 0.0018)) : 0));
-
-    const totalEngagements = postsList.reduce((acc, p) => acc + p.likesCount + p.commentsCount + p.sharesCount, 0);
-    const engagementRate = effectiveViews > 0
-      ? Number(((totalEngagements / effectiveViews) * 100).toFixed(1)) || (isElijahAccount ? 6.4 : 0)
-      : (isElijahAccount ? 6.4 : 0);
+    const libraryViews = postsList.reduce(
+      (acc, p) => acc + (Number(p.viewsCount) || 0),
+      0
+    );
+    const effectiveViews = totalViews > 0 ? totalViews : libraryViews;
+    const totalEngagements = postsList.reduce(
+      (acc, p) =>
+        acc +
+        (Number(p.likesCount) || 0) +
+        (Number(p.commentsCount) || 0) +
+        (Number(p.sharesCount) || 0),
+      0
+    );
+    const engagementRate =
+      effectiveViews > 0
+        ? Number(((totalEngagements / effectiveViews) * 100).toFixed(1))
+        : 0;
 
     return {
-      followersGrowth: scaledFollowers,
+      followersGrowth: followersCount,
       totalViews: effectiveViews,
       engagementRate,
       posts: postsList,

@@ -2,77 +2,9 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { prisma } from '@/lib/prisma';
 import { MetaPageItem } from '@/lib/types';
+import { DEFAULT_VERIFIED_PAGES } from '@/lib/managedPages';
 
 export const dynamic = 'force-dynamic';
-
-const DEFAULT_VERIFIED_PAGES: MetaPageItem[] = [
-  {
-    id: '4360643764182218',
-    name: 'Kasumba Zion Elijah',
-    category: 'Personal / Primary Creator Profile',
-    instagramBusinessAccount: {
-      id: 'ig_kasumba_primary',
-      username: 'elijah_kasumba',
-      name: 'Kasumba Zion Elijah',
-      followersCount: 7700,
-    },
-  },
-  {
-    id: 'page_elijah_kasumba',
-    name: 'elijah_kasumba',
-    category: 'Creator / Public Figure Page',
-    instagramBusinessAccount: {
-      id: 'ig_elijah_kasumba_page',
-      username: 'elijah_kasumba',
-      name: 'elijah_kasumba',
-      followersCount: 7700,
-    },
-  },
-  {
-    id: 'page_total_tools_ug',
-    name: 'Total Tools Prostore Uganda',
-    category: 'Hardware & Industrial Tools Prostore',
-    instagramBusinessAccount: {
-      id: 'ig_total_tools_ug',
-      username: 'totaltoolsprostoreug',
-      name: 'Total Tools Prostore Uganda',
-      followersCount: 5400,
-    },
-  },
-  {
-    id: 'page_wadad_spa_ug',
-    name: 'Wadad Spa ug',
-    category: 'Spa & Wellness Salon',
-    instagramBusinessAccount: {
-      id: 'ig_wadad_spa_ug',
-      username: 'wadadspaug',
-      name: 'Wadad Spa ug',
-      followersCount: 3200,
-    },
-  },
-  {
-    id: 'page_king_rhymes_music',
-    name: "King Rhymes' music",
-    category: 'Music & Entertainment Brand',
-    instagramBusinessAccount: {
-      id: 'ig_king_rhymes_music',
-      username: 'kingrhymesmusic',
-      name: "King Rhymes' music",
-      followersCount: 9100,
-    },
-  },
-  {
-    id: 'page_koko_digital_studio',
-    name: 'Koko Digital Studio',
-    category: 'Digital Agency / Creator Media',
-    instagramBusinessAccount: {
-      id: 'ig_koko_studio',
-      username: 'kokodigitalstudio',
-      name: 'Koko Digital Studio',
-      followersCount: 12400,
-    },
-  },
-];
 
 export async function GET(request: Request) {
   try {

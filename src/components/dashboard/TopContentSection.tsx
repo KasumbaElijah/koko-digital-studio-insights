@@ -257,7 +257,7 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           // Compute engagement rate
           const totalEng = (Number(post?.likesCount) || 0) + (Number(post?.commentsCount) || 0) + (Number(post?.sharesCount) || 0);
           const views = Number(post?.viewsCount) || 0;
-          const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '7.0';
+          const engRate = views > 0 ? ((totalEng / views) * 100).toFixed(1) : '0.0';
 
           // Follower gain metric
           const newFollowersVal = post?.newFollowers != null

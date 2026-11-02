@@ -21,6 +21,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
+import { DEFAULT_VERIFIED_PAGES, sanitizeMetaPages } from '@/lib/managedPages';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -469,7 +470,9 @@ export default function SettingsPage() {
           if (storedPages) {
             const parsedPages = JSON.parse(storedPages);
             if (Array.isArray(parsedPages)) {
-              setAvailablePages(parsedPages);
+              const cleaned = sanitizeMetaPages(parsedPages);
+              setAvailablePages(cleaned);
+              localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(cleaned));
             }
           }
           const storedActivePage = localStorage.getItem(`koko_active_page_id_${selectedClientId}`);
@@ -767,7 +770,7 @@ export default function SettingsPage() {
 
   // Compute selectable pages: merge availablePages with active channel and all managed profiles
   const allSelectablePages: MetaPageItem[] = React.useMemo(() => {
-    const list: MetaPageItem[] = [...availablePages];
+    const list: MetaPageItem[] = sanitizeMetaPages([...availablePages]);
     const activeUsername =
       (typeof window !== 'undefined'
         ? localStorage.getItem(`koko_active_ig_username_${selectedClientId}`)
@@ -785,84 +788,13 @@ export default function SettingsPage() {
         name: activeName,
         instagramBusinessAccount: {
           id: igAccount.platformAccountId || 'ig_primary',
-          username: activeUsername.replace(/^@/, ''),
+          username: activeUsername.replace(/^@/, '') === 'kokodigitalstudio' ? 'koko_digital_studio' : activeUsername.replace(/^@/, ''),
           name: activeName,
-          followersCount: 7700,
         },
       });
     }
 
-    // Comprehensive registry of managed Facebook Pages & Creator profiles
-    const verifiedManagedPages: MetaPageItem[] = [
-      {
-        id: '4360643764182218',
-        name: 'Kasumba Zion Elijah',
-        category: 'Personal / Primary Creator Profile',
-        instagramBusinessAccount: {
-          id: 'ig_kasumba_primary',
-          username: 'elijah_kasumba',
-          name: 'Kasumba Zion Elijah',
-          followersCount: 7700,
-        },
-      },
-      {
-        id: 'page_elijah_kasumba',
-        name: 'elijah_kasumba',
-        category: 'Creator / Public Figure Page',
-        instagramBusinessAccount: {
-          id: 'ig_elijah_kasumba_page',
-          username: 'elijah_kasumba',
-          name: 'elijah_kasumba',
-          followersCount: 7700,
-        },
-      },
-      {
-        id: 'page_total_tools_ug',
-        name: 'Total Tools Prostore Uganda',
-        category: 'Hardware & Industrial Tools Prostore',
-        instagramBusinessAccount: {
-          id: 'ig_total_tools_ug',
-          username: 'totaltoolsprostoreug',
-          name: 'Total Tools Prostore Uganda',
-          followersCount: 5400,
-        },
-      },
-      {
-        id: 'page_wadad_spa_ug',
-        name: 'Wadad Spa ug',
-        category: 'Spa & Wellness Salon',
-        instagramBusinessAccount: {
-          id: 'ig_wadad_spa_ug',
-          username: 'wadadspaug',
-          name: 'Wadad Spa ug',
-          followersCount: 3200,
-        },
-      },
-      {
-        id: 'page_king_rhymes_music',
-        name: "King Rhymes' music",
-        category: 'Music & Entertainment Brand',
-        instagramBusinessAccount: {
-          id: 'ig_king_rhymes_music',
-          username: 'kingrhymesmusic',
-          name: "King Rhymes' music",
-          followersCount: 9100,
-        },
-      },
-      {
-        id: 'page_koko_digital_studio',
-        name: 'Koko Digital Studio',
-        category: 'Digital Agency / Creator Media',
-        instagramBusinessAccount: {
-          id: 'ig_koko_studio',
-          username: 'kokodigitalstudio',
-          name: 'Koko Digital Studio',
-          followersCount: 12400,
-        },
-      },
-    ];
-
-    verifiedManagedPages.forEach((vp) => {
+    DEFAULT_VERIFIED_PAGES.forEach((vp) => {
       const exists = list.some(
         (p) => p.name.toLowerCase().trim() === vp.name.toLowerCase().trim() || p.id === vp.id
       );

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { prisma } from '@/lib/prisma';
 import { exchangeMetaLongLivedToken } from '@/lib/api/auth';
+import { DEFAULT_VERIFIED_PAGES } from '@/lib/managedPages';
 
 export async function GET(request: Request) {
   let code = null;
@@ -217,80 +218,10 @@ export async function GET(request: Request) {
     }
 
     // Guarantee all verified managed pages from user's account are selectable
-    const verifiedManagedPages = [
-      {
-        id: '4360643764182218',
-        name: 'Kasumba Zion Elijah',
-        category: 'Personal / Primary Creator Profile',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_kasumba_primary',
-          username: 'elijah_kasumba',
-          name: 'Kasumba Zion Elijah',
-          followersCount: 7700,
-        },
-      },
-      {
-        id: 'page_elijah_kasumba',
-        name: 'elijah_kasumba',
-        category: 'Creator / Public Figure Page',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_elijah_kasumba_page',
-          username: 'elijah_kasumba',
-          name: 'elijah_kasumba',
-          followersCount: 7700,
-        },
-      },
-      {
-        id: 'page_total_tools_ug',
-        name: 'Total Tools Prostore Uganda',
-        category: 'Hardware & Industrial Tools Prostore',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_total_tools_ug',
-          username: 'totaltoolsprostoreug',
-          name: 'Total Tools Prostore Uganda',
-          followersCount: 5400,
-        },
-      },
-      {
-        id: 'page_wadad_spa_ug',
-        name: 'Wadad Spa ug',
-        category: 'Spa & Wellness Salon',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_wadad_spa_ug',
-          username: 'wadadspaug',
-          name: 'Wadad Spa ug',
-          followersCount: 3200,
-        },
-      },
-      {
-        id: 'page_king_rhymes_music',
-        name: "King Rhymes' music",
-        category: 'Music & Entertainment Brand',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_king_rhymes_music',
-          username: 'kingrhymesmusic',
-          name: "King Rhymes' music",
-          followersCount: 9100,
-        },
-      },
-      {
-        id: 'page_koko_digital_studio',
-        name: 'Koko Digital Studio',
-        category: 'Digital Agency / Creator Media',
-        access_token: accessToken,
-        instagramBusinessAccount: {
-          id: 'ig_koko_studio',
-          username: 'kokodigitalstudio',
-          name: 'Koko Digital Studio',
-          followersCount: 12400,
-        },
-      },
-    ];
+    const verifiedManagedPages = DEFAULT_VERIFIED_PAGES.map((p) => ({
+      ...p,
+      access_token: accessToken,
+    }));
 
     verifiedManagedPages.forEach((vp) => {
       const exists = discoveredPages.some(
