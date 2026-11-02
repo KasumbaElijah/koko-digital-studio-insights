@@ -10,6 +10,9 @@ import {
   sanitizeMetaPages,
   sanitizeCachedReport,
   sanitizePostsList,
+  normalizeTikTokUsername,
+  formatTikTokHandle,
+  resolveInstagramUsername,
 } from '@/lib/managedPages';
 import {
   getFormatDistribution,
@@ -219,11 +222,26 @@ export default function DashboardPage() {
         const hasInstagram = Boolean(ig || directIg || directAcct || directUser || igCookieAcct);
         const hasTikTok = Boolean(tt || directTtToken || directTtAcct || directTtUser || ttCookieAcct);
 
-        const ttHandleDisplay = hasTikTok
+        const rawTtHandle = hasTikTok
           ? (directTtUser
               ? (directTtUser.startsWith('@') ? directTtUser : `@${directTtUser}`)
               : (tt?.platformAccountId || directTtAcct || ttCookieAcct || undefined))
           : undefined;
+        const ttHandleDisplay = rawTtHandle ? formatTikTokHandle(rawTtHandle) : undefined;
+
+        // Self-heal known handle typos (e.g. @kash8432 -> @kash8342) in persistent client storage
+        if (hasTikTok && ttHandleDisplay && rawTtHandle && ttHandleDisplay !== rawTtHandle) {
+          try {
+            const cleanFixed = normalizeTikTokUsername(ttHandleDisplay);
+            localStorage.setItem(`koko_active_tt_account_${currentClientId}`, ttHandleDisplay);
+            localStorage.setItem(`koko_active_tt_username_${currentClientId}`, cleanFixed);
+            document.cookie = `koko_session_tt_account_${encodeURIComponent(currentClientId)}=${encodeURIComponent(ttHandleDisplay)}; path=/; max-age=31536000; SameSite=Lax`;
+            if (tt) {
+              tt.platformAccountId = ttHandleDisplay;
+              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(accounts));
+            }
+          } catch (e) {}
+        }
 
         const rawIgHandle = hasInstagram
           ? (directUser
@@ -234,12 +252,14 @@ export default function DashboardPage() {
           ? rawIgHandle.replace(/^@?kokodigitalstudio$/i, '@koko_digital_studio')
           : undefined;
 
+        const effectivePageName = hasInstagram ? (activePageName || ig?.pageName || undefined) : undefined;
+
         setConnectedPlatforms({
           instagram: hasInstagram,
           tiktok: hasTikTok,
           instagramHandle: igHandleDisplay,
           tiktokHandle: ttHandleDisplay,
-          pageName: hasInstagram ? (activePageName || ig?.pageName || undefined) : undefined,
+          pageName: effectivePageName,
         });
 
         // Ensure availablePages is populated so ControlBar dropdown is immediately active
@@ -263,82 +283,86 @@ export default function DashboardPage() {
           } catch (e) {}
         }
 
-        // Background sync live Instagram & TikTok metrics
-        if (hasInstagram || hasTikTok) {
-          const igTokenToUse = directIg || ig?.accessToken || '';
-          const igAcctToUse = igHandleDisplay || directAcct || '';
-          const ttTokenToUse = directTtToken || tt?.accessToken || (ttHandleDisplay ? 'tt_direct_token' : '');
-          const ttAcctToUse = ttHandleDisplay || directTtAcct || '';
-          axios
-            .post('/api/sync', {
-              clientId: currentClientId,
-              startDate,
-              endDate,
-              accessToken: igTokenToUse,
-              platformAccountId: igAcctToUse,
-              tiktokAccessToken: ttTokenToUse,
-              tiktokPlatformAccountId: ttAcctToUse,
-              pageId: activePage || '',
-            })
-            .then((res) => {
-              if (currentClientId !== selectedClientId) return;
-              const syncedReport = res.data?.report || res.data;
-              if (syncedReport && syncedReport.id) {
-                setReport((prev) => {
-                  if (prev.clientId && prev.clientId !== currentClientId) return prev;
-                  const cleanCurrent = sanitizePostsList(prev.posts || []);
-                  const incomingPosts = sanitizePostsList(syncedReport.posts || []);
-                  const isManual = (p: any) => /^post_\d{10,15}$/.test(String(p?.id || ''));
-                  const syncedIg = Boolean(syncedReport.syncedPlatforms?.instagram || hasInstagram);
-                  const syncedTt = Boolean(syncedReport.syncedPlatforms?.tiktok || (hasTikTok && ttAcctToUse));
-
-                  const preserved = cleanCurrent.filter((p: any) => {
-                    const plat = String(p?.platform || '').toLowerCase();
-                    if (plat === 'instagram') return syncedIg ? isManual(p) : true;
-                    if (plat === 'tiktok') return syncedTt ? isManual(p) : true;
-                    return false;
-                  });
-                  const merged = [...incomingPosts, ...preserved];
-
-                  const finalReport = {
-                    ...prev,
-                    ...syncedReport,
+        // Fast-path 1: Fetch real Instagram profile & posts directly for connected handle/page
+        if (hasInstagram && (igHandleDisplay || activePage || effectivePageName)) {
+          const cleanIgUser = resolveInstagramUsername(igHandleDisplay, activePage || undefined, effectivePageName);
+          if (cleanIgUser || activePage) {
+            axios
+              .get(
+                `/api/instagram/posts?username=${encodeURIComponent(cleanIgUser)}&pageId=${encodeURIComponent(
+                  activePage || ''
+                )}&pageName=${encodeURIComponent(effectivePageName || '')}`
+              )
+              .then((res) => {
+                if (currentClientId !== selectedClientId) return;
+                if (res.data?.success && (Array.isArray(res.data?.posts) || res.data?.followerCount != null)) {
+                  const realIgPosts = sanitizePostsList(res.data.posts || []).map((p: any) => ({
+                    ...p,
                     clientId: currentClientId,
-                    posts: merged,
-                    igFollowersGrowth: Number(syncedReport.igFollowersGrowth) || 0,
-                    igViews: Number(syncedReport.igViews) || 0,
-                    igEngagementRate: Number(syncedReport.igEngagementRate) || 0,
-                    igViewsPctChange: Number(syncedReport.igViewsPctChange) || 0,
-                    ttFollowersGrowth: syncedTt
-                      ? Number(syncedReport.ttFollowersGrowth) || 0
-                      : Number(prev.ttFollowersGrowth) || 0,
-                    ttViews: syncedTt
-                      ? Number(syncedReport.ttViews) || 0
-                      : Number(prev.ttViews) || 0,
-                    ttEngagementRate: syncedTt
-                      ? Number(syncedReport.ttEngagementRate) || 0
-                      : Number(prev.ttEngagementRate) || 0,
-                    ttViewsPctChange: syncedTt
-                      ? Number(syncedReport.ttViewsPctChange) || 0
-                      : Number(prev.ttViewsPctChange) || 0,
-                  };
-                  try {
-                    localStorage.setItem(`koko_report_${currentClientId}`, JSON.stringify(finalReport));
-                    localStorage.setItem(`koko_posts_${currentClientId}`, JSON.stringify(finalReport.posts));
-                  } catch (e) {}
-                  return finalReport;
-                });
-              }
-            })
-            .catch(() => {});
+                  }));
+                  const totalIgViews = realIgPosts.reduce(
+                    (sum: number, p: any) => sum + (Number(p.viewsCount) || 0),
+                    0
+                  );
+                  const totalIgEng = realIgPosts.reduce(
+                    (sum: number, p: any) =>
+                      sum +
+                      (Number(p.likesCount) || 0) +
+                      (Number(p.commentsCount) || 0) +
+                      (Number(p.sharesCount) || 0),
+                    0
+                  );
+                  const realIgEngRate =
+                    totalIgViews > 0
+                      ? Number(((totalIgEng / totalIgViews) * 100).toFixed(1))
+                      : 0;
+
+                  setReport((prev) => {
+                    if (prev.clientId && prev.clientId !== currentClientId) return prev;
+                    const realFollowers =
+                      res.data.followerCount != null
+                        ? Number(res.data.followerCount) || 0
+                        : Number(prev.igFollowersGrowth) || 0;
+                    const currentPosts = sanitizePostsList(prev.posts || []);
+                    const prevIgPosts = currentPosts.filter(
+                      (p: any) => String(p?.platform || '').toLowerCase() === 'instagram'
+                    );
+                    if (realIgPosts.length === 0 && prevIgPosts.length > 0) {
+                      return prev;
+                    }
+                    const nonIgPosts = currentPosts.filter(
+                      (p: any) =>
+                        String(p?.platform || '').toLowerCase() !== 'instagram' ||
+                        /^post_\d{10,15}$/.test(String(p?.id || ''))
+                    );
+                    const merged = [...realIgPosts, ...nonIgPosts];
+                    const updatedReport = {
+                      ...prev,
+                      clientId: currentClientId,
+                      posts: merged,
+                      igFollowersGrowth: realFollowers,
+                      igViews: totalIgViews > 0 ? totalIgViews : Number(prev.igViews) || 0,
+                      igEngagementRate:
+                        realIgEngRate > 0 ? realIgEngRate : Number(prev.igEngagementRate) || 0,
+                    };
+                    try {
+                      localStorage.setItem(`koko_report_${currentClientId}`, JSON.stringify(updatedReport));
+                      localStorage.setItem(`koko_posts_${currentClientId}`, JSON.stringify(merged));
+                    } catch (e) {}
+                    return updatedReport;
+                  });
+                }
+              })
+              .catch(() => {});
+          }
         }
 
-        // Fetch real TikTok profile posts for the connected handle
+        // Fast-path 2: Fetch real TikTok profile posts for the connected handle
         if (hasTikTok && ttHandleDisplay) {
-          const cleanTtUser = ttHandleDisplay.replace(/^@/, '').trim();
+          const cleanTtUser = normalizeTikTokUsername(ttHandleDisplay);
           if (cleanTtUser) {
             axios
-              .get(`/api/tiktok/posts?username=${cleanTtUser}`)
+              .get(`/api/tiktok/posts?username=${encodeURIComponent(cleanTtUser)}`)
               .then((res) => {
                 if (currentClientId !== selectedClientId) return;
                 if (res.data?.success && Array.isArray(res.data?.posts)) {
@@ -557,9 +581,19 @@ export default function DashboardPage() {
             localStorage.setItem(`koko_posts_${targetClientId}`, JSON.stringify(finalReport.posts));
           } catch (e) {}
         } else if (!cachedReport) {
-          const empty = createEmptyReport(targetClientId);
           if (targetClientId === selectedClientId) {
-            setReport(empty);
+            setReport((prev) => {
+              const prevHasData =
+                prev &&
+                prev.clientId === targetClientId &&
+                ((Array.isArray(prev.posts) && prev.posts.length > 0) ||
+                  Number(prev.igViews) > 0 ||
+                  Number(prev.ttViews) > 0 ||
+                  Number(prev.igFollowersGrowth) > 0 ||
+                  Number(prev.ttFollowersGrowth) > 0);
+              if (prevHasData) return prev;
+              return createEmptyReport(targetClientId);
+            });
           }
         }
       } catch (err) {
@@ -800,7 +834,8 @@ export default function DashboardPage() {
   // Handle dynamic social media API sync
   const handleLiveSync = async (
     targetPageOverride?: string | unknown,
-    targetAccountOverride?: string
+    targetAccountOverride?: string,
+    targetPageNameOverride?: string
   ) => {
     if (!selectedClientId) return;
     const targetSyncClientId = selectedClientId;
@@ -816,6 +851,7 @@ export default function DashboardPage() {
         cleanPageOverride ||
         (typeof activePageId === 'string' ? activePageId : '') ||
         '';
+      let pageName = targetPageNameOverride || connectedPlatforms.pageName || '';
       try {
         const stored = localStorage.getItem('koko_connected_social_accounts');
         if (stored) {
@@ -827,6 +863,7 @@ export default function DashboardPage() {
             igToken = ig.accessToken;
             if (!igAccountId) igAccountId = ig.platformAccountId;
             if (!pageId && ig.pageId) pageId = ig.pageId;
+            if (!pageName && ig.pageName) pageName = ig.pageName;
           }
           const tt = accounts.find(
             (a) => a.clientId === targetSyncClientId && a.platform === 'tiktok'
@@ -855,6 +892,9 @@ export default function DashboardPage() {
         if (!pageId) {
           pageId = localStorage.getItem(`koko_active_page_id_${targetSyncClientId}`) || '';
         }
+        if (!pageName) {
+          pageName = localStorage.getItem(`koko_active_page_name_${targetSyncClientId}`) || '';
+        }
       } catch (e) {}
 
       if (igAccountId) {
@@ -879,6 +919,10 @@ export default function DashboardPage() {
         } catch (e) {}
       }
 
+      if (ttAccountId) {
+        ttAccountId = formatTikTokHandle(ttAccountId);
+      }
+
       const existingManualPosts = sanitizePostsList(report?.posts || []).filter((p) =>
         /^post_\d{10,15}$/.test(String(p?.id || ''))
       );
@@ -892,6 +936,7 @@ export default function DashboardPage() {
         tiktokAccessToken: ttToken,
         tiktokPlatformAccountId: ttAccountId,
         pageId,
+        pageName,
         existingPosts: existingManualPosts,
       });
 
@@ -904,32 +949,80 @@ export default function DashboardPage() {
           const cleanPrevPosts = sanitizePostsList(prev.posts || []);
           const newPosts = sanitizePostsList(updatedReport.posts || []);
           const isManual = (p: any) => /^post_\d{10,15}$/.test(String(p?.id || ''));
-          const syncedIg = Boolean(
-            updatedReport.syncedPlatforms?.instagram || igAccountId || pageId || igToken
+
+          const newIgPosts = newPosts.filter(
+            (p: any) => String(p?.platform || '').toLowerCase() === 'instagram'
           );
-          const syncedTt = Boolean(
-            updatedReport.syncedPlatforms?.tiktok || ttAccountId
+          const newTtPosts = newPosts.filter(
+            (p: any) => String(p?.platform || '').toLowerCase() === 'tiktok'
+          );
+          const prevIgPosts = cleanPrevPosts.filter(
+            (p: any) => String(p?.platform || '').toLowerCase() === 'instagram'
+          );
+          const prevTtPosts = cleanPrevPosts.filter(
+            (p: any) => String(p?.platform || '').toLowerCase() === 'tiktok'
           );
 
-          // Replace automated posts for synced platforms so switching pages never accumulates posts
-          const preservedPosts = cleanPrevPosts.filter((p: any) => {
-            const plat = String(p?.platform || '').toLowerCase();
-            if (plat === 'instagram') return syncedIg ? isManual(p) : true;
-            if (plat === 'tiktok') return syncedTt ? isManual(p) : true;
-            return false;
-          });
+          const hasNewIgData =
+            newIgPosts.length > 0 || Number(updatedReport.igFollowersGrowth) > 0;
+          const hasNewTtData =
+            newTtPosts.length > 0 || Number(updatedReport.ttFollowersGrowth) > 0;
 
-          const newPostIds = new Set(newPosts.map((p: any) => p.postId || p.id));
-          const finalPosts = [
-            ...newPosts,
-            ...preservedPosts.filter((p: any) => !newPostIds.has(p.postId || p.id)),
-          ];
+          const effectiveIgPosts =
+            newIgPosts.length > 0
+              ? [
+                  ...newIgPosts,
+                  ...prevIgPosts.filter(
+                    (p: any) =>
+                      isManual(p) &&
+                      !newIgPosts.some((np: any) => (np.postId || np.id) === (p.postId || p.id))
+                  ),
+                ]
+              : prevIgPosts;
+
+          const effectiveTtPosts =
+            newTtPosts.length > 0
+              ? [
+                  ...newTtPosts,
+                  ...prevTtPosts.filter(
+                    (p: any) =>
+                      isManual(p) &&
+                      !newTtPosts.some((np: any) => (np.postId || np.id) === (p.postId || p.id))
+                  ),
+                ]
+              : prevTtPosts;
+
+          const finalPosts = [...effectiveIgPosts, ...effectiveTtPosts];
 
           const mergedReport = {
             ...prev,
             ...updatedReport,
             clientId: targetSyncClientId,
             posts: finalPosts,
+            igFollowersGrowth: hasNewIgData
+              ? Number(updatedReport.igFollowersGrowth) || 0
+              : Number(prev.igFollowersGrowth) || 0,
+            igViews: hasNewIgData
+              ? Number(updatedReport.igViews) || 0
+              : Number(prev.igViews) || 0,
+            igEngagementRate: hasNewIgData
+              ? Number(updatedReport.igEngagementRate) || 0
+              : Number(prev.igEngagementRate) || 0,
+            igViewsPctChange: hasNewIgData
+              ? Number(updatedReport.igViewsPctChange) || 0
+              : Number(prev.igViewsPctChange) || 0,
+            ttFollowersGrowth: hasNewTtData
+              ? Number(updatedReport.ttFollowersGrowth) || 0
+              : Number(prev.ttFollowersGrowth) || 0,
+            ttViews: hasNewTtData
+              ? Number(updatedReport.ttViews) || 0
+              : Number(prev.ttViews) || 0,
+            ttEngagementRate: hasNewTtData
+              ? Number(updatedReport.ttEngagementRate) || 0
+              : Number(prev.ttEngagementRate) || 0,
+            ttViewsPctChange: hasNewTtData
+              ? Number(updatedReport.ttViewsPctChange) || 0
+              : Number(prev.ttViewsPctChange) || 0,
           };
           try {
             localStorage.setItem(
@@ -1025,31 +1118,108 @@ export default function DashboardPage() {
       localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
     } catch (e) {}
 
-    // Persist to backend
-    try {
-      await axios.post('/api/social-accounts/meta-pages', {
-        clientId: selectedClientId,
+    const targetClientId = selectedClientId;
+
+    // Persist to backend in background without delaying live sync
+    axios
+      .post('/api/social-accounts/meta-pages', {
+        clientId: targetClientId,
         pageId: page.id,
         pageName: page.name,
         pageAccessToken: page.access_token,
         instagramId,
         instagramUsername,
-      });
-    } catch (err) {}
+      })
+      .catch(() => {});
 
-    // Trigger immediate sync for the exact newly selected page and handle
-    handleLiveSync(page.id, displayAcct);
+    // Fast-path: immediately fetch real Instagram profile & posts for newly selected page
+    const cleanIgUser = resolveInstagramUsername(instagramUsername || displayAcct, page.id, page.name);
+    if (cleanIgUser || page.id) {
+      axios
+        .get(
+          `/api/instagram/posts?username=${encodeURIComponent(cleanIgUser)}&pageId=${encodeURIComponent(
+            page.id
+          )}&pageName=${encodeURIComponent(page.name)}`
+        )
+        .then((res) => {
+          if (targetClientId !== selectedClientId) return;
+          if (res.data?.success && (Array.isArray(res.data?.posts) || res.data?.followerCount != null)) {
+            const realIgPosts = sanitizePostsList(res.data.posts || []).map((p: any) => ({
+              ...p,
+              clientId: targetClientId,
+            }));
+            const totalIgViews = realIgPosts.reduce(
+              (sum: number, p: any) => sum + (Number(p.viewsCount) || 0),
+              0
+            );
+            const totalIgEng = realIgPosts.reduce(
+              (sum: number, p: any) =>
+                sum +
+                (Number(p.likesCount) || 0) +
+                (Number(p.commentsCount) || 0) +
+                (Number(p.sharesCount) || 0),
+              0
+            );
+            const realIgEngRate =
+              totalIgViews > 0 ? Number(((totalIgEng / totalIgViews) * 100).toFixed(1)) : 0;
+
+            setReport((prev) => {
+              if (prev.clientId && prev.clientId !== targetClientId) return prev;
+              const currentPosts = sanitizePostsList(prev.posts || []);
+              const prevIgPosts = currentPosts.filter(
+                (p: any) => String(p?.platform || '').toLowerCase() === 'instagram'
+              );
+              if (realIgPosts.length === 0 && prevIgPosts.length > 0) return prev;
+              const nonIgPosts = currentPosts.filter(
+                (p: any) =>
+                  String(p?.platform || '').toLowerCase() !== 'instagram' ||
+                  /^post_\d{10,15}$/.test(String(p?.id || ''))
+              );
+              const merged = [...realIgPosts, ...nonIgPosts];
+              const updatedReport = {
+                ...prev,
+                clientId: targetClientId,
+                posts: merged,
+                igFollowersGrowth:
+                  res.data.followerCount != null
+                    ? Number(res.data.followerCount) || 0
+                    : Number(prev.igFollowersGrowth) || 0,
+                igViews: totalIgViews > 0 ? totalIgViews : Number(prev.igViews) || 0,
+                igEngagementRate:
+                  realIgEngRate > 0 ? realIgEngRate : Number(prev.igEngagementRate) || 0,
+              };
+              try {
+                localStorage.setItem(`koko_report_${targetClientId}`, JSON.stringify(updatedReport));
+                localStorage.setItem(`koko_posts_${targetClientId}`, JSON.stringify(merged));
+              } catch (e) {}
+              return updatedReport;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Trigger immediate full sync (Graph API + insights) for the exact newly selected page and handle
+    handleLiveSync(page.id, displayAcct, page.name);
   };
 
-  // Auto-sync live metrics whenever connected platforms, active client, or date range changes
+  // Auto-sync live metrics whenever connected platforms, handles, active client, or date range changes
   useEffect(() => {
     if ((connectedPlatforms.instagram || connectedPlatforms.tiktok) && selectedClientId) {
       const timer = setTimeout(() => {
         handleLiveSync();
-      }, 700);
+      }, 450);
       return () => clearTimeout(timer);
     }
-  }, [selectedClientId, startDate, endDate, connectedPlatforms.instagram, connectedPlatforms.tiktok]);
+  }, [
+    selectedClientId,
+    startDate,
+    endDate,
+    connectedPlatforms.instagram,
+    connectedPlatforms.tiktok,
+    connectedPlatforms.instagramHandle,
+    connectedPlatforms.tiktokHandle,
+  ]);
 
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {

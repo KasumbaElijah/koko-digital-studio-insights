@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { fetchTikTokProfileVideos } from './tiktokScraper';
+import { normalizeTikTokUsername } from '../managedPages';
 
 export interface TikTokMetricResult {
   followersGrowth: number;
@@ -27,7 +28,7 @@ export async function fetchTikTokMetrics(
   startDate: Date,
   endDate: Date
 ): Promise<TikTokMetricResult> {
-  const cleanUsername = (platformAccountId || '').replace(/^@/, '').trim();
+  const cleanUsername = normalizeTikTokUsername(platformAccountId);
   const displayHandle = `@${cleanUsername}`;
 
   let totalViews = 0;

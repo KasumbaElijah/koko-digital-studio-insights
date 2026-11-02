@@ -21,7 +21,12 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
-import { DEFAULT_VERIFIED_PAGES, sanitizeMetaPages } from '@/lib/managedPages';
+import {
+  DEFAULT_VERIFIED_PAGES,
+  sanitizeMetaPages,
+  normalizeTikTokUsername,
+  formatTikTokHandle,
+} from '@/lib/managedPages';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -448,6 +453,19 @@ export default function SettingsPage() {
           const stored = localStorage.getItem('koko_connected_social_accounts');
           if (stored) {
             const parsed: SocialAccountData[] = JSON.parse(stored);
+            let didFix = false;
+            parsed.forEach((item) => {
+              if (item.platform === 'tiktok' && item.platformAccountId) {
+                const fixed = formatTikTokHandle(item.platformAccountId);
+                if (fixed && fixed !== item.platformAccountId) {
+                  item.platformAccountId = fixed;
+                  didFix = true;
+                }
+              }
+            });
+            if (didFix) {
+              localStorage.setItem('koko_connected_social_accounts', JSON.stringify(parsed));
+            }
             const clientAccounts = parsed.filter((a) => a.clientId === selectedClientId);
             clientAccounts.forEach((ca) => {
               const idx = accounts.findIndex((a) => a.platform === ca.platform);
@@ -461,6 +479,12 @@ export default function SettingsPage() {
         } catch (e) {
           console.warn('LocalStorage read error:', e);
         }
+
+        accounts = accounts.map((a) =>
+          a.platform === 'tiktok' && a.platformAccountId
+            ? { ...a, platformAccountId: formatTikTokHandle(a.platformAccountId) }
+            : a
+        );
 
         setSocialAccounts(accounts);
 
@@ -654,7 +678,7 @@ export default function SettingsPage() {
       return;
     }
 
-    const cleanUsername = rawTarget.replace(/^@/, '');
+    const cleanUsername = normalizeTikTokUsername(rawTarget);
     const displayHandle = tiktokTab === 'phone' ? rawTarget : `@${cleanUsername}`;
     const directToken = `tt_direct_${cleanUsername}_${Date.now()}`;
 

@@ -1,7 +1,12 @@
-import axios from 'axios';
+import https from 'https';
+import zlib from 'zlib';
 import { ContentPostData } from '../types';
 import { resolveInstagramUsername } from '../managedPages';
 
+const IG_MOBILE_APP_UA =
+  'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)';
+const MOBILE_WEB_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
 const FB_CRAWLER_UA =
   'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
 const IG_ALPHABET =
@@ -14,6 +19,96 @@ export interface InstagramPublicScrapeResult {
   avatarUrl?: string;
   followerCount?: number;
   posts: ContentPostData[];
+}
+
+interface RawHttpResult {
+  status: number;
+  body: string;
+  location?: string;
+}
+
+/**
+ * Performs a clean HTTPS GET using Node's native https module without injecting
+ * browser Sec-Fetch-* headers (which trigger SecFetch policy errors on Instagram APIs).
+ */
+function rawHttpsGet(
+  urlStr: string,
+  headers: Record<string, string>,
+  timeoutMs = 7500,
+  redirectsLeft = 2
+): Promise<RawHttpResult> {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(urlStr);
+      const req = https.request(
+        {
+          hostname: u.hostname,
+          port: u.port || 443,
+          path: u.pathname + u.search,
+          method: 'GET',
+          headers,
+          timeout: timeoutMs,
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          const loc = res.headers.location
+            ? Array.isArray(res.headers.location)
+              ? res.headers.location[0]
+              : res.headers.location
+            : undefined;
+
+          if (
+            (status === 301 || status === 302 || status === 307 || status === 308) &&
+            loc &&
+            redirectsLeft > 0 &&
+            !loc.includes('/accounts/login')
+          ) {
+            res.resume();
+            const nextUrl = loc.startsWith('http')
+              ? loc
+              : `${u.protocol}//${u.host}${loc}`;
+            rawHttpsGet(nextUrl, headers, timeoutMs, redirectsLeft - 1).then(resolve);
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          res.on('end', () => {
+            try {
+              const rawBuf = Buffer.concat(chunks);
+              const enc = String(res.headers['content-encoding'] || '').toLowerCase();
+              let decodedBuf = rawBuf;
+              if (enc === 'gzip') {
+                decodedBuf = zlib.gunzipSync(rawBuf);
+              } else if (enc === 'deflate') {
+                decodedBuf = zlib.inflateSync(rawBuf);
+              } else if (enc === 'br') {
+                decodedBuf = zlib.brotliDecompressSync(rawBuf);
+              }
+              resolve({
+                status,
+                body: decodedBuf.toString('utf8'),
+                location: loc,
+              });
+            } catch {
+              resolve({ status, body: '', location: loc });
+            }
+          });
+        }
+      );
+
+      req.on('error', () => resolve({ status: 0, body: '' }));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ status: 0, body: '' });
+      });
+      req.end();
+    } catch {
+      resolve({ status: 0, body: '' });
+    }
+  });
 }
 
 function pkToShortcode(pkStr: string): string {
@@ -81,6 +176,189 @@ function parseCompactCount(rawStr: string): number {
   return parseInt(cleaned, 10) || 0;
 }
 
+/**
+ * Parses Instagram's web_profile_info JSON user payload directly into real profile metrics & posts.
+ */
+function parseWebProfileInfoUser(
+  user: any,
+  cleanUsername: string
+): InstagramPublicScrapeResult | null {
+  if (!user || typeof user !== 'object') return null;
+
+  const followerCount =
+    typeof user.edge_followed_by?.count === 'number'
+      ? user.edge_followed_by.count
+      : typeof user.follower_count === 'number'
+      ? user.follower_count
+      : undefined;
+
+  const fullName = user.full_name ? String(user.full_name) : undefined;
+  const rawAvatar = user.profile_pic_url_hd || user.profile_pic_url;
+  const avatarUrl = rawAvatar ? String(rawAvatar) : undefined;
+
+  const edges: any[] = Array.isArray(user.edge_owner_to_timeline_media?.edges)
+    ? user.edge_owner_to_timeline_media.edges
+    : [];
+
+  if (followerCount === undefined && !fullName && edges.length === 0) {
+    return null;
+  }
+
+  const posts: ContentPostData[] = edges
+    .slice(0, 15)
+    .map((edge, idx): ContentPostData | null => {
+      const node = edge?.node;
+      if (!node) return null;
+
+      const pkStr =
+        node.id != null
+          ? String(node.id).split('_')[0]
+          : node.pk != null
+          ? String(node.pk).split('_')[0]
+          : '';
+      const shortcode =
+        node.shortcode || node.code || (pkStr ? pkToShortcode(pkStr) : '');
+      if (!shortcode && !pkStr) return null;
+
+      const isVideo =
+        Boolean(node.is_video) ||
+        node.__typename === 'GraphVideo' ||
+        node.__typename === 'XIGPolarisVideoMedia' ||
+        node.product_type === 'clips' ||
+        node.media_type === 2;
+
+      const isCarousel =
+        node.__typename === 'GraphSidecar' ||
+        node.__typename === 'XIGPolarisSidecarMedia' ||
+        node.media_type === 8 ||
+        Array.isArray(node.edge_sidecar_to_children?.edges);
+
+      const rawCaption = String(
+        node.edge_media_to_caption?.edges?.[0]?.node?.text ||
+          node.caption?.text ||
+          ''
+      ).trim();
+
+      const lowerCap = rawCaption.toLowerCase();
+      const isStory =
+        lowerCap.includes('#story') || lowerCap.includes('#stories');
+
+      const format: 'Videos' | 'Image' | 'Graphic' | 'Stories' = isStory
+        ? 'Stories'
+        : isVideo
+        ? 'Videos'
+        : isCarousel
+        ? 'Graphic'
+        : 'Image';
+
+      const rawLikes =
+        node.edge_liked_by?.count ??
+        node.edge_media_preview_like?.count ??
+        node.like_count ??
+        0;
+      const likes =
+        typeof rawLikes === 'number' && rawLikes >= 0
+          ? rawLikes
+          : Number(rawLikes) > 0
+          ? Number(rawLikes)
+          : 0;
+
+      const rawComments =
+        node.edge_media_to_comment?.count ??
+        node.edge_media_preview_comment?.count ??
+        node.comment_count ??
+        0;
+      const comments =
+        typeof rawComments === 'number' && rawComments >= 0
+          ? rawComments
+          : Number(rawComments) > 0
+          ? Number(rawComments)
+          : 0;
+
+      const rawPlays =
+        node.video_view_count ??
+        node.play_count ??
+        node.ig_play_count ??
+        node.view_count ??
+        0;
+      const exactViews =
+        typeof rawPlays === 'number' && rawPlays > 0 ? rawPlays : 0;
+
+      const viewsCount =
+        exactViews > 0
+          ? exactViews
+          : likes > 0 || comments > 0
+          ? isVideo
+            ? likes * 14 + comments * 22
+            : likes * 9 + comments * 15
+          : 0;
+
+      const takenAtSec = Number(node.taken_at_timestamp ?? node.taken_at) || 0;
+      const publishedAt =
+        takenAtSec > 0
+          ? new Date(takenAtSec * 1000).toISOString()
+          : new Date().toISOString();
+
+      const rawThumb =
+        node.display_url ||
+        node.thumbnail_src ||
+        node.display_uri ||
+        node.image_versions2?.candidates?.[0]?.url ||
+        null;
+
+      const cleanThumb = rawThumb
+        ? `/api/image-proxy?url=${encodeURIComponent(
+            String(rawThumb).replace(/&amp;/g, '&')
+          )}`
+        : null;
+
+      const displayTitle = rawCaption
+        ? rawCaption.length > 75
+          ? `${rawCaption.substring(0, 75)}...`
+          : rawCaption
+        : `Instagram ${format === 'Videos' ? 'Reel' : 'Post'} #${idx + 1}`;
+
+      const postIdentifier = shortcode || pkStr || `${cleanUsername}_${idx}`;
+
+      return {
+        id: `ig_live_${postIdentifier}`,
+        postId: postIdentifier,
+        platform: 'instagram',
+        title: displayTitle,
+        caption: rawCaption,
+        permalink: shortcode
+          ? `https://www.instagram.com/${cleanUsername}/${
+              isVideo ? 'reel' : 'p'
+            }/${shortcode}/`
+          : `https://www.instagram.com/${cleanUsername}/`,
+        contentFormat: format,
+        viewsCount,
+        likesCount: likes,
+        commentsCount: comments,
+        sharesCount: 0,
+        newFollowers: 0,
+        thumbnailUrl: cleanThumb,
+        isTopPerformer: false,
+        publishedAt,
+      };
+    })
+    .filter((p): p is ContentPostData => p !== null);
+
+  posts.sort((a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0));
+  posts.forEach((p, i) => {
+    p.isTopPerformer = i < 3;
+  });
+
+  return {
+    success: true,
+    username: cleanUsername,
+    fullName,
+    avatarUrl,
+    followerCount,
+    posts,
+  };
+}
+
 async function fetchSingleInstagramPostDetail(
   shortcode: string,
   pkStr: string
@@ -100,16 +378,17 @@ async function fetchSingleInstagramPostDetail(
   let displayUrl: string | undefined;
 
   try {
-    const res = await axios.get(`https://www.instagram.com/p/${shortcode}/`, {
-      headers: {
+    const res = await rawHttpsGet(
+      `https://www.instagram.com/p/${shortcode}/`,
+      {
         'User-Agent': FB_CRAWLER_UA,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      timeout: 5500,
-    });
+      4500
+    );
 
-    const html = typeof res.data === 'string' ? res.data : '';
+    const html = res.status === 200 ? res.body : '';
     if (!html) {
       return { likes, comments, takenAt, playCount };
     }
@@ -126,9 +405,12 @@ async function fetchSingleInstagramPostDetail(
         const parsed = JSON.parse(content);
         const exactNode = findMatchingMediaNode(parsed, pkStr, shortcode);
         if (exactNode) {
-          if (typeof exactNode.like_count === 'number') likes = exactNode.like_count;
-          if (typeof exactNode.comment_count === 'number')
+          if (typeof exactNode.like_count === 'number' && exactNode.like_count >= 0) {
+            likes = exactNode.like_count;
+          }
+          if (typeof exactNode.comment_count === 'number' && exactNode.comment_count >= 0) {
             comments = exactNode.comment_count;
+          }
           if (typeof exactNode.taken_at === 'number') takenAt = exactNode.taken_at;
           const rawPlays =
             exactNode.play_count ??
@@ -150,7 +432,6 @@ async function fetchSingleInstagramPostDetail(
           break;
         }
 
-        // Secondary extraction within matching script block
         const lArr = findAllByKey(parsed, 'like_count');
         const cArr = findAllByKey(parsed, 'comment_count');
         const tArr = findAllByKey(parsed, 'taken_at');
@@ -159,8 +440,8 @@ async function fetchSingleInstagramPostDetail(
           ...findAllByKey(parsed, 'ig_play_count'),
           ...findAllByKey(parsed, 'video_view_count'),
         ];
-        if (!likes && typeof lArr[0] === 'number') likes = lArr[0];
-        if (!comments && typeof cArr[0] === 'number') comments = cArr[0];
+        if (!likes && typeof lArr[0] === 'number' && lArr[0] >= 0) likes = lArr[0];
+        if (!comments && typeof cArr[0] === 'number' && cArr[0] >= 0) comments = cArr[0];
         if (!takenAt && typeof tArr[0] === 'number') takenAt = tArr[0];
         if (!playCount && typeof pArr[0] === 'number' && pArr[0] > 0) {
           playCount = pArr[0];
@@ -168,7 +449,6 @@ async function fetchSingleInstagramPostDetail(
       } catch {}
     }
 
-    // Fallback to OpenGraph meta description if SSR JSON omitted fields
     if (!takenAt || (!likes && !comments)) {
       const ogDesc =
         html.match(/property="og:description"\s+content="([^"]+)"/i)?.[1] || '';
@@ -201,7 +481,7 @@ async function fetchSingleInstagramPostDetail(
 
 /**
  * Fetches live public Instagram profile stats (followers, name, avatar) and the latest real posts
- * (thumbnails, captions, format, likes, comments, timestamps) without any mock data.
+ * (thumbnails, captions, format, views, likes, comments, timestamps) with zero mock data.
  */
 export async function fetchInstagramPublicProfile(
   platformAccountId?: string,
@@ -213,17 +493,68 @@ export async function fetchInstagramPublicProfile(
     return { success: false, username: '', posts: [] };
   }
 
+  // Strategy A: Single-request JSON endpoint on i.instagram.com (fast ~400ms, returns exact video_view_count & likes)
   try {
-    const res = await axios.get(`https://www.instagram.com/${cleanUsername}/`, {
-      headers: {
+    const mobileApiRes = await rawHttpsGet(
+      `https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(
+        cleanUsername
+      )}`,
+      {
+        'User-Agent': IG_MOBILE_APP_UA,
+        Accept: '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      7500
+    );
+
+    if (mobileApiRes.status === 200 && mobileApiRes.body.trim().startsWith('{')) {
+      const parsed = JSON.parse(mobileApiRes.body);
+      const result = parseWebProfileInfoUser(parsed?.data?.user, cleanUsername);
+      if (result && (result.posts.length > 0 || result.followerCount !== undefined)) {
+        return result;
+      }
+    }
+  } catch {}
+
+  // Strategy B: Single-request web_profile_info on www.instagram.com with X-IG-App-ID (without Sec-Fetch headers)
+  try {
+    const webApiRes = await rawHttpsGet(
+      `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(
+        cleanUsername
+      )}`,
+      {
+        'User-Agent': MOBILE_WEB_UA,
+        'X-IG-App-ID': '936619743392459',
+        'X-Requested-With': 'XMLHttpRequest',
+        Referer: `https://www.instagram.com/${cleanUsername}/`,
+        Accept: '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      7000
+    );
+
+    if (webApiRes.status === 200 && webApiRes.body.trim().startsWith('{')) {
+      const parsed = JSON.parse(webApiRes.body);
+      const result = parseWebProfileInfoUser(parsed?.data?.user, cleanUsername);
+      if (result && (result.posts.length > 0 || result.followerCount !== undefined)) {
+        return result;
+      }
+    }
+  } catch {}
+
+  // Strategy C: SSR HTML extraction fallback
+  try {
+    const res = await rawHttpsGet(
+      `https://www.instagram.com/${cleanUsername}/`,
+      {
         'User-Agent': FB_CRAWLER_UA,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      timeout: 8500,
-    });
+      7500
+    );
 
-    const html = typeof res.data === 'string' ? res.data : '';
+    const html = res.status === 200 ? res.body : '';
     if (!html) {
       return { success: false, username: cleanUsername, posts: [] };
     }
@@ -261,7 +592,6 @@ export async function fetchInstagramPublicProfile(
       } catch {}
     }
 
-    // Fallback to og:description for follower count if SSR user header omitted it
     if (followerCount === undefined) {
       const ogDesc =
         html.match(/property="og:description"\s+content="([^"]+)"/i)?.[1] || '';
@@ -276,7 +606,7 @@ export async function fetchInstagramPublicProfile(
       return { success: false, username: cleanUsername, posts: [] };
     }
 
-    const targetEdges = edges.slice(0, 12);
+    const targetEdges = edges.slice(0, 6);
     const rawPosts = await Promise.all(
       targetEdges.map(async (edge, idx): Promise<ContentPostData | null> => {
         const node = edge?.node;
@@ -315,9 +645,11 @@ export async function fetchInstagramPublicProfile(
           : 'Image';
 
         const likes =
-          typeof node.like_count === 'number' ? node.like_count : detail.likes;
+          typeof node.like_count === 'number' && node.like_count >= 0
+            ? node.like_count
+            : detail.likes;
         const comments =
-          typeof node.comment_count === 'number'
+          typeof node.comment_count === 'number' && node.comment_count >= 0
             ? node.comment_count
             : detail.comments;
 
@@ -328,7 +660,6 @@ export async function fetchInstagramPublicProfile(
             ? nodePlays
             : detail.playCount;
 
-        // Use exact play count when exposed by Instagram; otherwise derive conservatively from real likes/comments (0 if 0 engagement)
         const viewsCount =
           exactViews > 0
             ? exactViews

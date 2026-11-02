@@ -150,6 +150,29 @@ export function resolveInstagramUsername(
   return '';
 }
 
+const KNOWN_TIKTOK_HANDLE_CORRECTIONS: Record<string, string> = {
+  kash8432: 'kash8342',
+};
+
+export function normalizeTikTokUsername(raw?: string | null): string {
+  const cleaned = (raw || '').replace(/^@/, '').trim();
+  if (!cleaned) return '';
+  const mapped = KNOWN_TIKTOK_HANDLE_CORRECTIONS[cleaned.toLowerCase()];
+  return mapped || cleaned;
+}
+
+export function formatTikTokHandle(raw?: string | null): string {
+  const rawTrimmed = (raw || '').trim();
+  if (!rawTrimmed) return '';
+  const normalized = normalizeTikTokUsername(rawTrimmed);
+  if (!normalized) return '';
+  // Preserve phone-number identifiers without prepending '@'
+  if (/^\+?\d{7,15}$/.test(normalized) && !rawTrimmed.startsWith('@')) {
+    return normalized;
+  }
+  return `@${normalized}`;
+}
+
 const SYNTHETIC_TITLE_FRAGMENTS = [
   '• High Traction Video Reel',
   '• Behind The Scenes Carousel',

@@ -27,10 +27,15 @@ export async function fetchInstagramMetrics(
   accessToken: string,
   startDate: Date,
   endDate: Date,
-  targetPageId?: string
+  targetPageId?: string,
+  targetPageName?: string
 ): Promise<InstagramMetricResult> {
   const cleanAccountId = (platformAccountId || '').replace(/^@/, '').trim();
-  const resolvedUsername = resolveInstagramUsername(cleanAccountId, targetPageId);
+  const resolvedUsername = resolveInstagramUsername(
+    cleanAccountId,
+    targetPageId,
+    targetPageName
+  );
 
   if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
     return {
@@ -167,55 +172,140 @@ export async function fetchInstagramMetrics(
       let linkedPage: any = null;
       let anyBusinessIgId = '';
       let anyBusinessToken = accessToken;
+      let pageFollowersFallback = 0;
+
+      const norm = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
       try {
-        const meAccountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-          params: {
-            fields:
-              'id,name,access_token,instagram_business_account{id,username,name,followers_count}',
-            access_token: accessToken,
-          },
-          timeout: 8000,
-        });
+        let pages: any[] = [];
+        try {
+          const meAccountsRes = await axios.get(
+            'https://graph.facebook.com/v19.0/me/accounts',
+            {
+              params: {
+                fields:
+                  'id,name,access_token,fan_count,followers_count,instagram_business_account{id,username,name,followers_count},connected_instagram_account{id,username,name,followers_count}',
+                access_token: accessToken,
+              },
+              timeout: 7000,
+            }
+          );
+          pages = meAccountsRes.data?.data || [];
+        } catch {
+          // 2-step resilient fallback if nested instagram_business_account subfield fails on /me/accounts
+          try {
+            const basicRes = await axios.get(
+              'https://graph.facebook.com/v19.0/me/accounts',
+              {
+                params: {
+                  fields: 'id,name,access_token,fan_count,followers_count',
+                  access_token: accessToken,
+                },
+                timeout: 6000,
+              }
+            );
+            const basicPages = basicRes.data?.data || [];
+            pages = await Promise.all(
+              basicPages.map(async (bp: any) => {
+                try {
+                  const detailRes = await axios.get(
+                    `https://graph.facebook.com/v19.0/${bp.id}`,
+                    {
+                      params: {
+                        fields:
+                          'instagram_business_account{id,username,name,followers_count},connected_instagram_account{id,username,name,followers_count}',
+                        access_token: bp.access_token || accessToken,
+                      },
+                      timeout: 4500,
+                    }
+                  );
+                  return { ...bp, ...detailRes.data };
+                } catch {
+                  return bp;
+                }
+              })
+            );
+          } catch {}
+        }
 
-        const pages = meAccountsRes.data?.data || [];
-        const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
-        if (pageWithIg?.instagram_business_account?.id) {
-          anyBusinessIgId = pageWithIg.instagram_business_account.id;
+        // Business Manager portfolio fallback if /me/accounts returned empty
+        if (pages.length === 0) {
+          try {
+            const bizRes = await axios.get(
+              'https://graph.facebook.com/v19.0/me/businesses',
+              {
+                params: { fields: 'id,name', access_token: accessToken },
+                timeout: 5000,
+              }
+            );
+            const bizList = bizRes.data?.data || [];
+            for (const biz of bizList.slice(0, 3)) {
+              const ownedRes = await axios
+                .get(`https://graph.facebook.com/v19.0/${biz.id}/owned_pages`, {
+                  params: {
+                    fields:
+                      'id,name,access_token,fan_count,followers_count,instagram_business_account{id,username,name,followers_count},connected_instagram_account{id,username,name,followers_count}',
+                    access_token: accessToken,
+                  },
+                  timeout: 5000,
+                })
+                .catch(() => null);
+              if (Array.isArray(ownedRes?.data?.data)) {
+                pages.push(...ownedRes.data.data);
+              }
+            }
+          } catch {}
+        }
+
+        const getIgNode = (p: any) =>
+          p?.instagram_business_account || p?.connected_instagram_account || null;
+
+        const pageWithIg = pages.find((p: any) => getIgNode(p)?.id);
+        if (pageWithIg && getIgNode(pageWithIg)?.id) {
+          anyBusinessIgId = getIgNode(pageWithIg).id;
           anyBusinessToken = pageWithIg.access_token || accessToken;
         }
 
         if (targetPageId) {
           linkedPage = pages.find(
-            (p: any) =>
-              p.id === targetPageId ||
-              p.instagram_business_account?.id === targetPageId
+            (p: any) => p.id === targetPageId || getIgNode(p)?.id === targetPageId
           );
         }
 
-        if (!linkedPage && (resolvedUsername || cleanAccountId)) {
-          const targetLower = (resolvedUsername || cleanAccountId).toLowerCase();
-          linkedPage = pages.find(
-            (p: any) =>
+        if (!linkedPage && (resolvedUsername || cleanAccountId || targetPageName)) {
+          const targetNorm = norm(resolvedUsername || cleanAccountId || targetPageName);
+          const pageNameNorm = norm(targetPageName);
+          linkedPage = pages.find((p: any) => {
+            const igNode = getIgNode(p);
+            const pNorm = norm(p.name);
+            const igUserNorm = norm(igNode?.username);
+            return (
               p.id === cleanAccountId ||
-              p.instagram_business_account?.id === cleanAccountId ||
-              p.instagram_business_account?.username?.toLowerCase() === targetLower
-          );
+              igNode?.id === cleanAccountId ||
+              (targetNorm && igUserNorm === targetNorm) ||
+              (targetNorm && pNorm === targetNorm) ||
+              (pageNameNorm && pNorm === pageNameNorm) ||
+              (targetNorm.length >= 6 && pNorm.startsWith(targetNorm))
+            );
+          });
         }
 
-        if (linkedPage?.instagram_business_account?.id) {
-          targetIgId = linkedPage.instagram_business_account.id;
+        const linkedIgNode = getIgNode(linkedPage);
+        if (linkedIgNode?.id) {
+          targetIgId = linkedIgNode.id;
           if (linkedPage.access_token) {
             targetToken = linkedPage.access_token;
           }
-          if (typeof linkedPage.instagram_business_account.followers_count === 'number') {
-            followersCount = linkedPage.instagram_business_account.followers_count;
+          if (typeof linkedIgNode.followers_count === 'number') {
+            followersCount = linkedIgNode.followers_count;
           }
         } else if (linkedPage?.id) {
           targetIgId = linkedPage.id;
           if (linkedPage.access_token) {
             targetToken = linkedPage.access_token;
           }
+          pageFollowersFallback =
+            Number(linkedPage.followers_count ?? linkedPage.fan_count) || 0;
         }
       } catch {}
 
@@ -345,6 +435,9 @@ export async function fetchInstagramMetrics(
           );
           const rawFbPosts = fbPostsRes.data?.data || [];
           if (rawFbPosts.length > 0) {
+            if (followersCount === 0 && pageFollowersFallback > 0) {
+              followersCount = pageFollowersFallback;
+            }
             postsList = rawFbPosts.map((p: any, idx: number) => {
               const likes = Number(p.likes?.summary?.total_count) || 0;
               const comments = Number(p.comments?.summary?.total_count) || 0;
@@ -379,7 +472,8 @@ export async function fetchInstagramMetrics(
     if (postsList.length === 0 || followersCount === 0) {
       const publicProfile = await fetchInstagramPublicProfile(
         cleanAccountId,
-        targetPageId
+        targetPageId,
+        targetPageName
       );
       if (publicProfile.success) {
         if (followersCount === 0 && publicProfile.followerCount != null) {

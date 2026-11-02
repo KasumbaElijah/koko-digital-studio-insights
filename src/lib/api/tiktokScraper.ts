@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ContentPostData } from '../types';
+import { normalizeTikTokUsername } from '../managedPages';
 
 const IPHONE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
@@ -22,6 +23,7 @@ interface TikTokProfileHeader {
   followerCount?: number;
   heartCount?: number;
   videoCount?: number;
+  cookieHeader?: string;
 }
 
 interface TikTokVideoDetail {
@@ -34,6 +36,22 @@ interface TikTokVideoDetail {
   createTime: string;
   caption?: string;
   coverUrl?: string | null;
+}
+
+function findTikTokVideoStruct(obj: any, videoId: string, depth = 0): any | null {
+  if (!obj || typeof obj !== 'object' || depth > 14) return null;
+  const candidateId = obj.id != null ? String(obj.id) : obj.itemId != null ? String(obj.itemId) : '';
+  if (
+    candidateId === videoId &&
+    (obj.stats || obj.statsV2 || obj.diggCount !== undefined || obj.playCount !== undefined)
+  ) {
+    return obj;
+  }
+  for (const key of Object.keys(obj)) {
+    const found = findTikTokVideoStruct(obj[key], videoId, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -50,6 +68,13 @@ async function fetchTikTokProfileHeader(username: string): Promise<TikTokProfile
       },
       timeout: 8000,
     });
+    const rawSetCookie: unknown = res.headers?.['set-cookie'];
+    const cookieHeader = Array.isArray(rawSetCookie)
+      ? rawSetCookie.map((c) => String(c).split(';')[0]).join('; ')
+      : typeof rawSetCookie === 'string'
+      ? rawSetCookie.split(';')[0]
+      : '';
+
     const html = res.data;
     const match =
       typeof html === 'string'
@@ -77,6 +102,7 @@ async function fetchTikTokProfileHeader(username: string): Promise<TikTokProfile
             : undefined,
         videoCount:
           stats.videoCount != null ? Number(stats.videoCount) : undefined,
+        cookieHeader,
       };
     }
   } catch {}
@@ -88,7 +114,8 @@ async function fetchTikTokProfileHeader(username: string): Promise<TikTokProfile
  */
 async function fetchTikTokCreatorItemList(
   username: string,
-  secUid: string
+  secUid: string,
+  cookieHeader?: string
 ): Promise<any[]> {
   try {
     const url = `https://www.tiktok.com/api/creator/item_list/?aid=1988&app_name=tiktok_web&device_platform=web_mobile&count=20&cursor=${Date.now()}&secUid=${encodeURIComponent(secUid)}&type=1`;
@@ -98,8 +125,9 @@ async function fetchTikTokCreatorItemList(
         Accept: 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         Referer: `https://www.tiktok.com/@${username}`,
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
-      timeout: 9000,
+      timeout: 8000,
     });
     const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
     if (Array.isArray(data?.itemList) && data.itemList.length > 0) {
@@ -114,7 +142,8 @@ async function fetchTikTokCreatorItemList(
  */
 async function fetchSingleTikTokVideoDetail(
   username: string,
-  videoId: string
+  videoId: string,
+  cookieHeader?: string
 ): Promise<TikTokVideoDetail | null> {
   try {
     const res = await axios.get(`https://www.tiktok.com/@${username}/video/${videoId}`, {
@@ -122,38 +151,79 @@ async function fetchSingleTikTokVideoDetail(
         'User-Agent': IPHONE_UA,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
-      timeout: 7000,
+      timeout: 6500,
     });
-    const html = res.data;
-    const match =
-      typeof html === 'string'
-        ? html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/)
-        : null;
+    const html = typeof res.data === 'string' ? res.data : '';
+    if (!html) return null;
+
+    const match = html.match(
+      /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/
+    );
     if (match) {
-      const data = JSON.parse(match[1]);
-      const defaultScope = data['__DEFAULT_SCOPE__'] || {};
-      const videoDetail = defaultScope['webapp.video-detail'];
-      const itemStruct = videoDetail?.itemInfo?.itemStruct;
-      if (itemStruct) {
-        const stats = itemStruct.stats || itemStruct.statsV2 || {};
-        const createTimeSec = itemStruct.createTime ? Number(itemStruct.createTime) : null;
-        let pubDate = '';
-        if (createTimeSec && !isNaN(createTimeSec)) {
-          pubDate = new Date(createTimeSec * 1000).toISOString();
+      try {
+        const data = JSON.parse(match[1]);
+        const defaultScope = data['__DEFAULT_SCOPE__'] || {};
+        const itemStruct =
+          defaultScope['webapp.video-detail']?.itemInfo?.itemStruct ||
+          findTikTokVideoStruct(data, videoId);
+
+        if (itemStruct) {
+          const stats = itemStruct.stats || itemStruct.statsV2 || itemStruct;
+          const createTimeSec = itemStruct.createTime ? Number(itemStruct.createTime) : null;
+          let pubDate = '';
+          if (createTimeSec && !isNaN(createTimeSec)) {
+            pubDate = new Date(createTimeSec * 1000).toISOString();
+          }
+          return {
+            id: videoId,
+            likes: Number(stats.diggCount) || 0,
+            comments: Number(stats.commentCount) || 0,
+            shares: Number(stats.shareCount) || 0,
+            bookmarks: Number(stats.collectCount) || 0,
+            views: Number(stats.playCount) || 0,
+            createTime: pubDate,
+            caption: itemStruct.desc ? String(itemStruct.desc) : '',
+            coverUrl: itemStruct.video?.cover || itemStruct.video?.originCover || null,
+          };
         }
-        return {
-          id: videoId,
-          likes: Number(stats.diggCount) || 0,
-          comments: Number(stats.commentCount) || 0,
-          shares: Number(stats.shareCount) || 0,
-          bookmarks: Number(stats.collectCount) || 0,
-          views: Number(stats.playCount) || 0,
-          createTime: pubDate,
-          caption: itemStruct.desc || '',
-          coverUrl: itemStruct.video?.cover || itemStruct.video?.originCover || null,
-        };
-      }
+      } catch {}
+    }
+
+    // Fallback: extract stats directly from mobile video hydration HTML near videoId or primary stats block
+    const idIdx = html.indexOf(`"${videoId}"`);
+    const searchWindow = idIdx >= 0 ? html.slice(Math.max(0, idIdx - 500), idIdx + 6000) : html;
+    const diggMatch =
+      searchWindow.match(/"diggCount"\s*:\s*"?(\d+)"?/) ||
+      html.match(/"diggCount"\s*:\s*"?(\d+)"?/);
+    const commentMatch =
+      searchWindow.match(/"commentCount"\s*:\s*"?(\d+)"?/) ||
+      html.match(/"commentCount"\s*:\s*"?(\d+)"?/);
+    const shareMatch =
+      searchWindow.match(/"shareCount"\s*:\s*"?(\d+)"?/) ||
+      html.match(/"shareCount"\s*:\s*"?(\d+)"?/);
+    const collectMatch =
+      searchWindow.match(/"collectCount"\s*:\s*"?(\d+)"?/) ||
+      html.match(/"collectCount"\s*:\s*"?(\d+)"?/);
+    const playMatch =
+      searchWindow.match(/"playCount"\s*:\s*"?(\d+)"?/) ||
+      html.match(/"playCount"\s*:\s*"?(\d+)"?/);
+    const createMatch =
+      searchWindow.match(/"createTime"\s*:\s*"?(\d{9,11})"?/) ||
+      html.match(/"createTime"\s*:\s*"?(\d{9,11})"?/);
+
+    if (diggMatch || commentMatch || shareMatch || playMatch) {
+      const createSec = createMatch ? Number(createMatch[1]) : 0;
+      return {
+        id: videoId,
+        likes: diggMatch ? Number(diggMatch[1]) || 0 : 0,
+        comments: commentMatch ? Number(commentMatch[1]) || 0 : 0,
+        shares: shareMatch ? Number(shareMatch[1]) || 0 : 0,
+        bookmarks: collectMatch ? Number(collectMatch[1]) || 0 : 0,
+        views: playMatch ? Number(playMatch[1]) || 0 : 0,
+        createTime: createSec > 0 ? new Date(createSec * 1000).toISOString() : '',
+      };
     }
   } catch {}
   return null;
@@ -185,10 +255,16 @@ function mapTikTokItemToPost(
   }
   if (!pubDate) pubDate = new Date().toISOString();
 
-  const views = detail?.views ?? (Number(stats.playCount ?? v.playCount) || 0);
-  const likes = detail?.likes ?? (Number(stats.diggCount ?? v.diggCount) || 0);
-  const comments = detail?.comments ?? (Number(stats.commentCount ?? v.commentCount) || 0);
-  const shares = detail?.shares ?? (Number(stats.shareCount ?? v.shareCount) || 0);
+  const baseViews = Number(stats.playCount ?? v.playCount) || 0;
+  const baseLikes = Number(stats.diggCount ?? v.diggCount) || 0;
+  const baseComments = Number(stats.commentCount ?? v.commentCount) || 0;
+  const baseShares = Number(stats.shareCount ?? v.shareCount) || 0;
+
+  const views = detail?.views && detail.views > 0 ? detail.views : baseViews;
+  const likes = detail?.likes && detail.likes > 0 ? detail.likes : baseLikes;
+  const comments =
+    detail?.comments && detail.comments > 0 ? detail.comments : baseComments;
+  const shares = detail?.shares && detail.shares > 0 ? detail.shares : baseShares;
 
   const rawCover =
     detail?.coverUrl ||
@@ -253,7 +329,7 @@ function mapTikTokItemToPost(
 export async function fetchTikTokProfileVideos(
   username: string
 ): Promise<TikTokProfileScrapeResult> {
-  const cleanUsername = (username || '').replace(/^@/, '').trim();
+  const cleanUsername = normalizeTikTokUsername(username);
   if (!cleanUsername) {
     return { success: false, username: '', posts: [] };
   }
@@ -264,7 +340,11 @@ export async function fetchTikTokProfileVideos(
 
     // 2. Primary path: fetch real videos with complete stats via creator/item_list
     if (profileHeader?.secUid) {
-      const itemList = await fetchTikTokCreatorItemList(cleanUsername, profileHeader.secUid);
+      const itemList = await fetchTikTokCreatorItemList(
+        cleanUsername,
+        profileHeader.secUid,
+        profileHeader.cookieHeader
+      );
       if (itemList.length > 0) {
         const posts = itemList.map((v, idx) => mapTikTokItemToPost(v, idx, cleanUsername));
         posts.sort((a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0));
@@ -361,7 +441,11 @@ export async function fetchTikTokProfileVideos(
     await Promise.all(
       rawVideos.map(async (v) => {
         if (!v.id) return;
-        const detail = await fetchSingleTikTokVideoDetail(cleanUsername, String(v.id));
+        const detail = await fetchSingleTikTokVideoDetail(
+          cleanUsername,
+          String(v.id),
+          profileHeader?.cookieHeader
+        );
         if (detail) {
           detailMap.set(String(v.id), detail);
         }

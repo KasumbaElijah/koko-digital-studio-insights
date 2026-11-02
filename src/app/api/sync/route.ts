@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchInstagramMetrics } from '@/lib/api/instagram';
 import { fetchTikTokMetrics } from '@/lib/api/tiktok';
 import { prisma } from '@/lib/prisma';
-import { sanitizePostsList } from '@/lib/managedPages';
+import { sanitizePostsList, formatTikTokHandle } from '@/lib/managedPages';
 import { calculatePctChange } from '@/lib/analytics';
 
 export async function POST(request: Request) {
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     let bodyTiktokAccessToken = '';
     let bodyTiktokPlatformAccountId = '';
     let pageId = '';
+    let pageName = '';
 
     let existingPostsFromClient: any[] = [];
     try {
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
           ? body.tiktokPlatformAccountId
           : '';
       pageId = typeof body.pageId === 'string' ? body.pageId : '';
+      pageName = typeof body.pageName === 'string' ? body.pageName : '';
       if (Array.isArray(body.existingPosts)) {
         existingPostsFromClient = sanitizePostsList(body.existingPosts);
       }
@@ -70,13 +72,15 @@ export async function POST(request: Request) {
     const igPlatformAccountId =
       bodyPlatformAccountId || igAccount?.platformAccountId || '';
     const effectivePageId = pageId || igAccount?.pageId || '';
+    const effectivePageName = pageName || igAccount?.pageName || '';
 
     const ttToken = bodyTiktokAccessToken || ttAccount?.accessToken || '';
-    const effectiveTtHandle =
+    const rawTtHandle =
       bodyTiktokPlatformAccountId || ttAccount?.platformAccountId || '';
+    const effectiveTtHandle = rawTtHandle ? formatTikTokHandle(rawTtHandle) : '';
 
     const shouldSyncInstagram = Boolean(
-      igPlatformAccountId || effectivePageId || igToken
+      igPlatformAccountId || effectivePageId || effectivePageName || igToken
     );
     const shouldSyncTikTok = Boolean(effectiveTtHandle || ttToken);
 
@@ -87,7 +91,8 @@ export async function POST(request: Request) {
             igToken,
             startDate,
             endDate,
-            effectivePageId
+            effectivePageId,
+            effectivePageName
           ).catch((e) => {
             console.warn('Instagram sync error:', e);
             return null;
