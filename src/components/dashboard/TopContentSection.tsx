@@ -242,7 +242,12 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
             if (ttMatch) {
               creatorHandle = ttMatch[1];
             } else if (post.permalink.includes('instagram.com')) {
-              creatorHandle = clientName ? clientName.toLowerCase().replace(/[^a-z0-9_.]/g, '') : 'instagram';
+              const igMatch = post.permalink.match(/instagram\.com\/([^/?#]+)/);
+              if (igMatch && igMatch[1] && !['p', 'reel', 'stories', 'tv'].includes(igMatch[1])) {
+                creatorHandle = igMatch[1];
+              } else {
+                creatorHandle = clientName ? clientName.toLowerCase().replace(/[^a-z0-9_.]/g, '') : 'instagram';
+              }
             }
           }
           if (creatorHandle === 'creator' && clientName) {
