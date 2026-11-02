@@ -365,47 +365,56 @@ export async function fetchTikTokProfileVideos(
       }
     }
 
-    // 3. Secondary fallback: check /embed/@username if item_list was unavailable
-    const embedRes = await axios
-      .get(`https://www.tiktok.com/embed/@${cleanUsername}`, {
-        headers: {
-          'User-Agent': IPHONE_UA,
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        timeout: 8000,
-      })
-      .catch(() => null);
-
-    const html = embedRes?.data;
+    // 3. Secondary fallback: check /embed/@username if item_list was unavailable (retry once on transient empty embed)
     let userInfo: any = null;
     let rawVideos: any[] = [];
 
-    const frontityMatch =
-      typeof html === 'string'
-        ? html.match(/<script id="__FRONTITY_CONNECT_STATE__"[^>]*>([\s\S]*?)<\/script>/)
-        : null;
-    if (frontityMatch) {
-      try {
-        const state = JSON.parse(frontityMatch[1]);
-        const dataMap = state.source?.data || {};
-        const key = Object.keys(dataMap).find((k) =>
-          k.toLowerCase().includes(cleanUsername.toLowerCase())
-        );
-        if (key && dataMap[key]) {
-          userInfo = dataMap[key].userInfo;
-          if (Array.isArray(dataMap[key].videoList)) {
-            rawVideos = dataMap[key].videoList;
-          }
-        }
-      } catch {}
-    }
+    for (let attempt = 0; attempt < 2 && rawVideos.length === 0; attempt++) {
+      const embedRes = await axios
+        .get(`https://www.tiktok.com/embed/@${cleanUsername}`, {
+          headers: {
+            'User-Agent': IPHONE_UA,
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            ...(attempt === 1 && profileHeader?.cookieHeader
+              ? { Cookie: profileHeader.cookieHeader }
+              : {}),
+          },
+          timeout: 8000,
+        })
+        .catch(() => null);
 
-    if (!userInfo && typeof html === 'string') {
-      const vMatch = html.match(/"videoList":(\[\{.*?\}\]|\[\])/);
-      if (vMatch) {
+      const html = embedRes?.data;
+      const frontityMatch =
+        typeof html === 'string'
+          ? html.match(/<script id="__FRONTITY_CONNECT_STATE__"[^>]*>([\s\S]*?)<\/script>/)
+          : null;
+      if (frontityMatch) {
         try {
-          rawVideos = JSON.parse(vMatch[1]);
+          const state = JSON.parse(frontityMatch[1]);
+          const dataMap = state.source?.data || {};
+          const key = Object.keys(dataMap).find((k) =>
+            k.toLowerCase().includes(cleanUsername.toLowerCase())
+          );
+          if (key && dataMap[key]) {
+            userInfo = dataMap[key].userInfo || userInfo;
+            if (Array.isArray(dataMap[key].videoList) && dataMap[key].videoList.length > 0) {
+              rawVideos = dataMap[key].videoList;
+            }
+          }
         } catch {}
+      }
+
+      if (rawVideos.length === 0 && typeof html === 'string') {
+        const vMatch = html.match(/"videoList":(\[\{.*?\}\]|\[\])/);
+        if (vMatch) {
+          try {
+            const parsedVids = JSON.parse(vMatch[1]);
+            if (Array.isArray(parsedVids) && parsedVids.length > 0) {
+              rawVideos = parsedVids;
+            }
+          } catch {}
+        }
       }
     }
 

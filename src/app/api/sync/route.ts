@@ -239,7 +239,7 @@ export async function POST(request: Request) {
         : Number(igMetrics?.engagementRate) || 0
       : 0;
     const igPctChange =
-      shouldSyncInstagram && igPriorViews > 0
+      shouldSyncInstagram && igPriorViews > 0 && igCurrViews > 0
         ? calculatePctChange(igCurrViews, igPriorViews)
         : 0;
 
@@ -276,7 +276,7 @@ export async function POST(request: Request) {
         : Number(ttMetrics?.engagementRate) || 0
       : 0;
     const ttPctChange =
-      shouldSyncTikTok && ttPriorViews > 0
+      shouldSyncTikTok && ttPriorViews > 0 && ttCurrViews > 0
         ? calculatePctChange(ttCurrViews, ttPriorViews)
         : 0;
 

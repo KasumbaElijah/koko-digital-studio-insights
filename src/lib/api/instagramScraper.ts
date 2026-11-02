@@ -3,6 +3,8 @@ import zlib from 'zlib';
 import { ContentPostData } from '../types';
 import { resolveInstagramUsername } from '../managedPages';
 
+const DESKTOP_CHROME_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const IG_MOBILE_APP_UA =
   'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)';
 const MOBILE_WEB_UA =
@@ -480,6 +482,247 @@ async function fetchSingleInstagramPostDetail(
 }
 
 /**
+ * Fetches exact video_view_count from Instagram's public post embed widget for video posts.
+ */
+async function fetchPostEmbedVideoViews(shortcode: string): Promise<number> {
+  if (!shortcode) return 0;
+  try {
+    const res = await rawHttpsGet(
+      `https://www.instagram.com/p/${encodeURIComponent(shortcode)}/embed/captioned/`,
+      {
+        'User-Agent': DESKTOP_CHROME_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Fetch-Dest': 'iframe',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        Referer: 'https://koko-digital-studio-insights.vercel.app/',
+      },
+      3500
+    );
+    if (res.status !== 200 || !res.body) return 0;
+
+    const ctxMatch = res.body.match(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/);
+    if (ctxMatch) {
+      const inner = JSON.parse(ctxMatch[1]);
+      const pctx = typeof inner === 'string' ? JSON.parse(inner) : inner;
+      const views = Number(pctx?.gql_data?.shortcode_media?.video_view_count) || 0;
+      if (views > 0) return views;
+    }
+
+    const regexMatch = res.body.match(/\\?"video_view_count\\?"\s*:\s*(\d+)/);
+    if (regexMatch) {
+      return Number(regexMatch[1]) || 0;
+    }
+  } catch {}
+  return 0;
+}
+
+/**
+ * Fetches live public Instagram profile & posts via Instagram's public iframe Profile Embed endpoint
+ * (`/username/embed/`), which works reliably from cloud/serverless hosts (Vercel AWS).
+ */
+async function fetchInstagramViaPublicEmbed(
+  cleanUsername: string
+): Promise<InstagramPublicScrapeResult | null> {
+  try {
+    const res = await rawHttpsGet(
+      `https://www.instagram.com/${encodeURIComponent(cleanUsername)}/embed/`,
+      {
+        'User-Agent': DESKTOP_CHROME_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Fetch-Dest': 'iframe',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        Referer: 'https://koko-digital-studio-insights.vercel.app/',
+      },
+      7500
+    );
+
+    if (res.status !== 200 || !res.body) return null;
+
+    const ctxMatch = res.body.match(/"contextJSON"\s*:\s*("(?:\\.|[^"\\])*")/);
+    if (!ctxMatch) return null;
+
+    const innerStr = JSON.parse(ctxMatch[1]);
+    const parsedCtx = typeof innerStr === 'string' ? JSON.parse(innerStr) : innerStr;
+    const context = parsedCtx?.context;
+    if (!context || typeof context !== 'object') return null;
+
+    const followerCount =
+      typeof context.followers_count === 'number'
+        ? context.followers_count
+        : undefined;
+    const fullName = context.full_name ? String(context.full_name) : undefined;
+    const avatarUrl = context.profile_pic_url
+      ? String(context.profile_pic_url)
+      : undefined;
+    const rawMediaList: any[] = Array.isArray(context.graphql_media)
+      ? context.graphql_media
+      : [];
+
+    if (followerCount === undefined && rawMediaList.length === 0) {
+      return null;
+    }
+
+    // Enrich exact video_view_count for video posts in parallel (non-blocking 3.5s cap)
+    const videoViewsMap = new Map<string, number>();
+    await Promise.all(
+      rawMediaList.slice(0, 6).map(async (item) => {
+        const sm = item?.shortcode_media || item?.node || item;
+        const code = sm?.shortcode;
+        const isVid = Boolean(sm?.is_video) || sm?.__typename === 'GraphVideo';
+        if (code && isVid && !(Number(sm?.video_view_count) > 0)) {
+          const views = await fetchPostEmbedVideoViews(String(code));
+          if (views > 0) {
+            videoViewsMap.set(String(code), views);
+          }
+        }
+      })
+    );
+
+    const posts: ContentPostData[] = rawMediaList
+      .slice(0, 12)
+      .map((item, idx): ContentPostData | null => {
+        const node = item?.shortcode_media || item?.node || item;
+        if (!node) return null;
+
+        const pkStr = node.id != null ? String(node.id).split('_')[0] : '';
+        const shortcode =
+          node.shortcode || node.code || (pkStr ? pkToShortcode(pkStr) : '');
+        if (!shortcode && !pkStr) return null;
+
+        const isVideo =
+          Boolean(node.is_video) ||
+          node.__typename === 'GraphVideo' ||
+          node.product_type === 'clips';
+        const isCarousel = node.__typename === 'GraphSidecar';
+
+        const rawCaption = String(
+          node.edge_media_to_caption?.edges?.[0]?.node?.text ||
+            node.caption?.text ||
+            ''
+        ).trim();
+
+        const lowerCap = rawCaption.toLowerCase();
+        const isStory =
+          lowerCap.includes('#story') || lowerCap.includes('#stories');
+
+        const format: 'Videos' | 'Image' | 'Graphic' | 'Stories' = isStory
+          ? 'Stories'
+          : isVideo
+          ? 'Videos'
+          : isCarousel
+          ? 'Graphic'
+          : 'Image';
+
+        const rawLikes =
+          node.edge_liked_by?.count ??
+          node.edge_media_preview_like?.count ??
+          node.like_count ??
+          0;
+        const likes =
+          typeof rawLikes === 'number' && rawLikes >= 0
+            ? rawLikes
+            : Number(rawLikes) > 0
+            ? Number(rawLikes)
+            : 0;
+
+        const rawComments =
+          node.edge_media_to_comment?.count ??
+          node.edge_media_preview_comment?.count ??
+          node.comment_count ??
+          0;
+        const comments =
+          typeof rawComments === 'number' && rawComments >= 0
+            ? rawComments
+            : Number(rawComments) > 0
+            ? Number(rawComments)
+            : 0;
+
+        const exactViews =
+          Number(node.video_view_count) ||
+          (shortcode ? videoViewsMap.get(String(shortcode)) || 0 : 0);
+
+        const viewsCount =
+          exactViews > 0
+            ? exactViews
+            : likes > 0 || comments > 0
+            ? isVideo
+              ? likes * 14 + comments * 22
+              : likes * 9 + comments * 15
+            : 0;
+
+        const takenAtSec = Number(node.taken_at_timestamp ?? node.taken_at) || 0;
+        const publishedAt =
+          takenAtSec > 0
+            ? new Date(takenAtSec * 1000).toISOString()
+            : new Date().toISOString();
+
+        const rawThumb =
+          node.display_url ||
+          node.thumbnail_src ||
+          node.display_resources?.[0]?.src ||
+          null;
+
+        const cleanThumb = rawThumb
+          ? `/api/image-proxy?url=${encodeURIComponent(
+              String(rawThumb).replace(/&amp;/g, '&')
+            )}`
+          : null;
+
+        const displayTitle = rawCaption
+          ? rawCaption.length > 75
+            ? `${rawCaption.substring(0, 75)}...`
+            : rawCaption
+          : `Instagram ${format === 'Videos' ? 'Reel' : 'Post'} #${idx + 1}`;
+
+        const postIdentifier = shortcode || pkStr || `${cleanUsername}_${idx}`;
+
+        return {
+          id: `ig_live_${postIdentifier}`,
+          postId: postIdentifier,
+          platform: 'instagram',
+          title: displayTitle,
+          caption: rawCaption,
+          permalink: shortcode
+            ? `https://www.instagram.com/${cleanUsername}/${
+                isVideo ? 'reel' : 'p'
+              }/${shortcode}/`
+            : `https://www.instagram.com/${cleanUsername}/`,
+          contentFormat: format,
+          viewsCount,
+          likesCount: likes,
+          commentsCount: comments,
+          sharesCount: 0,
+          newFollowers: 0,
+          thumbnailUrl: cleanThumb,
+          isTopPerformer: false,
+          publishedAt,
+        };
+      })
+      .filter((p): p is ContentPostData => p !== null);
+
+    posts.sort((a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0));
+    posts.forEach((p, i) => {
+      p.isTopPerformer = i < 3;
+    });
+
+    return {
+      success: true,
+      username: cleanUsername,
+      fullName,
+      avatarUrl,
+      followerCount,
+      posts,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetches live public Instagram profile stats (followers, name, avatar) and the latest real posts
  * (thumbnails, captions, format, views, likes, comments, timestamps) with zero mock data.
  */
@@ -491,6 +734,15 @@ export async function fetchInstagramPublicProfile(
   const cleanUsername = resolveInstagramUsername(platformAccountId, pageId, pageName);
   if (!cleanUsername) {
     return { success: false, username: '', posts: [] };
+  }
+
+  // Strategy 0: Public Instagram Profile Embed (`/username/embed/` with iframe headers — works on Vercel AWS!)
+  const embedProfile = await fetchInstagramViaPublicEmbed(cleanUsername);
+  if (
+    embedProfile &&
+    (embedProfile.posts.length > 0 || embedProfile.followerCount !== undefined)
+  ) {
+    return embedProfile;
   }
 
   // Strategy A: Single-request JSON endpoint on i.instagram.com (fast ~400ms, returns exact video_view_count & likes)
