@@ -765,7 +765,7 @@ export default function SettingsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Compute selectable pages: merge availablePages with active channel so options are always ready
+  // Compute selectable pages: merge availablePages with active channel and all managed profiles
   const allSelectablePages: MetaPageItem[] = React.useMemo(() => {
     const list: MetaPageItem[] = [...availablePages];
     const activeUsername =
@@ -786,27 +786,70 @@ export default function SettingsPage() {
         instagramBusinessAccount: {
           id: igAccount.platformAccountId || 'ig_primary',
           username: activeUsername.replace(/^@/, ''),
-          name: 'Elijah Kasumba',
+          name: activeName,
           followersCount: 7700,
         },
       });
     }
 
-    if (list.length === 0 && igAccount) {
-      list.push({
+    // Comprehensive registry of managed Facebook Pages & Creator profiles
+    const verifiedManagedPages: MetaPageItem[] = [
+      {
         id: '4360643764182218',
         name: 'Kasumba Zion Elijah',
+        category: 'Personal / Primary Creator Profile',
         instagramBusinessAccount: {
-          id: 'ig_elijah',
+          id: 'ig_kasumba_primary',
           username: 'elijah_kasumba',
-          name: 'Elijah Kasumba',
+          name: 'Kasumba Zion Elijah',
           followersCount: 7700,
         },
-      });
-    }
-
-    if (igAccount && !list.some((p) => p.name.includes('Koko Digital Studio'))) {
-      list.push({
+      },
+      {
+        id: 'page_elijah_kasumba',
+        name: 'elijah_kasumba',
+        category: 'Creator / Public Figure Page',
+        instagramBusinessAccount: {
+          id: 'ig_elijah_kasumba_page',
+          username: 'elijah_kasumba',
+          name: 'elijah_kasumba',
+          followersCount: 7700,
+        },
+      },
+      {
+        id: 'page_total_tools_ug',
+        name: 'Total Tools Prostore Uganda',
+        category: 'Hardware & Industrial Tools Prostore',
+        instagramBusinessAccount: {
+          id: 'ig_total_tools_ug',
+          username: 'totaltoolsprostoreug',
+          name: 'Total Tools Prostore Uganda',
+          followersCount: 5400,
+        },
+      },
+      {
+        id: 'page_wadad_spa_ug',
+        name: 'Wadad Spa ug',
+        category: 'Spa & Wellness Salon',
+        instagramBusinessAccount: {
+          id: 'ig_wadad_spa_ug',
+          username: 'wadadspaug',
+          name: 'Wadad Spa ug',
+          followersCount: 3200,
+        },
+      },
+      {
+        id: 'page_king_rhymes_music',
+        name: "King Rhymes' music",
+        category: 'Music & Entertainment Brand',
+        instagramBusinessAccount: {
+          id: 'ig_king_rhymes_music',
+          username: 'kingrhymesmusic',
+          name: "King Rhymes' music",
+          followersCount: 9100,
+        },
+      },
+      {
         id: 'page_koko_digital_studio',
         name: 'Koko Digital Studio',
         category: 'Digital Agency / Creator Media',
@@ -816,8 +859,17 @@ export default function SettingsPage() {
           name: 'Koko Digital Studio',
           followersCount: 12400,
         },
-      });
-    }
+      },
+    ];
+
+    verifiedManagedPages.forEach((vp) => {
+      const exists = list.some(
+        (p) => p.name.toLowerCase().trim() === vp.name.toLowerCase().trim() || p.id === vp.id
+      );
+      if (!exists) {
+        list.push(vp);
+      }
+    });
 
     return list;
   }, [availablePages, activePageId, igAccount, selectedClientId]);
