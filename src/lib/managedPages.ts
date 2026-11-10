@@ -121,6 +121,36 @@ const KNOWN_HANDLE_LOOKUP: Record<string, string> = {
   koko_digital_studio: 'koko_digital_studio',
 };
 
+export function normalizeInstagramUsername(raw?: string | null): string {
+  let cleaned = (raw || '').trim();
+  if (!cleaned) return '';
+
+  // Extract username if a full Instagram URL was pasted
+  const urlMatch = cleaned.match(/instagram\.com\/([a-zA-Z0-9._]{2,30})/i);
+  if (urlMatch && urlMatch[1]) {
+    const seg = urlMatch[1].toLowerCase();
+    if (!['p', 'reel', 'reels', 'stories', 'explore', 'accounts', 'oauth'].includes(seg)) {
+      cleaned = urlMatch[1];
+    }
+  }
+
+  cleaned = cleaned.replace(/^@/, '').trim();
+  if (!cleaned) return '';
+
+  const mapped = KNOWN_HANDLE_LOOKUP[cleaned.toLowerCase()];
+  if (mapped) return mapped;
+
+  // If an email address was entered, use the local part before '@'
+  if (cleaned.includes('@')) {
+    cleaned = cleaned.split('@')[0].trim();
+  }
+
+  const mappedAfterEmail = KNOWN_HANDLE_LOOKUP[cleaned.toLowerCase()];
+  if (mappedAfterEmail) return mappedAfterEmail;
+
+  return cleaned.replace(/\s+/g, '');
+}
+
 export function resolveInstagramUsername(
   platformAccountId?: string,
   pageId?: string,
@@ -144,6 +174,18 @@ export function resolveInstagramUsername(
       !c.startsWith('sa_')
     ) {
       return c;
+    }
+  }
+
+  for (const c of candidates) {
+    const stripped = c.replace(/^(page_|ig_)/i, '').trim();
+    if (
+      stripped &&
+      stripped !== 'primary' &&
+      /^[a-zA-Z0-9._]{2,30}$/.test(stripped) &&
+      !/^\d+$/.test(stripped)
+    ) {
+      return KNOWN_HANDLE_LOOKUP[stripped.toLowerCase()] || stripped;
     }
   }
 

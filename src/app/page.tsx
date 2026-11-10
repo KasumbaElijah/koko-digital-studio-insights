@@ -276,6 +276,40 @@ export default function DashboardPage() {
                 parsedPages.push(vd);
               }
             });
+
+            // If a custom Instagram account was connected directly, ensure it's in parsedPages and active
+            const connectedCleanUser = resolveInstagramUsername(
+              igHandleDisplay,
+              activePage || undefined,
+              effectivePageName
+            );
+            if (connectedCleanUser) {
+              const existingMatch = parsedPages.find(
+                (p) =>
+                  p.id === activePage ||
+                  p.instagramBusinessAccount?.username?.toLowerCase() === connectedCleanUser.toLowerCase()
+              );
+              if (!existingMatch) {
+                const customPageId = activePage || `page_${connectedCleanUser}`;
+                const customPageName = effectivePageName || `@${connectedCleanUser}`;
+                parsedPages.unshift({
+                  id: customPageId,
+                  name: customPageName,
+                  category: 'Instagram Connected Account',
+                  instagramBusinessAccount: {
+                    id: `ig_${connectedCleanUser}`,
+                    username: connectedCleanUser,
+                    name: customPageName,
+                  },
+                });
+                if (!activePage) {
+                  setActivePageId(customPageId);
+                }
+              } else if (!activePage) {
+                setActivePageId(existingMatch.id);
+              }
+            }
+
             localStorage.setItem(`koko_meta_available_pages_${currentClientId}`, JSON.stringify(parsedPages));
             if (Array.isArray(parsedPages) && parsedPages.length > 0) {
               setAvailablePages(parsedPages);

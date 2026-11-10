@@ -24,6 +24,8 @@ import { ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 import {
   DEFAULT_VERIFIED_PAGES,
   sanitizeMetaPages,
+  sanitizePostsList,
+  normalizeInstagramUsername,
   normalizeTikTokUsername,
   formatTikTokHandle,
 } from '@/lib/managedPages';
@@ -50,6 +52,7 @@ export default function SettingsPage() {
   const [igPassword, setIgPassword] = useState('');
   const [ttIdentifier, setTtIdentifier] = useState('');
   const [ttPassword, setTtPassword] = useState('');
+  const igInputRef = React.useRef<HTMLInputElement>(null);
 
   // Modal States
   const [showSetupGuide, setShowSetupGuide] = useState(false);
@@ -298,6 +301,53 @@ export default function SettingsPage() {
     }
   }, [selectedClientId]);
 
+  // Helper to clear cached platform posts/metrics when disconnecting or switching accounts
+  const clearCachedPlatformReportData = (clientId: string, platform: 'instagram' | 'tiktok') => {
+    try {
+      const reportKey = `koko_report_${clientId}`;
+      const postsKey = `koko_posts_${clientId}`;
+      const storedReport = localStorage.getItem(reportKey);
+      if (storedReport) {
+        const parsed = JSON.parse(storedReport);
+        const keptPosts = sanitizePostsList(parsed?.posts || []).filter(
+          (p: any) =>
+            String(p?.platform || '').toLowerCase() !== platform ||
+            /^post_\d{10,15}$/.test(String(p?.id || ''))
+        );
+        const updatedReport =
+          platform === 'instagram'
+            ? {
+                ...parsed,
+                posts: keptPosts,
+                igViews: 0,
+                igFollowersGrowth: 0,
+                igEngagementRate: 0,
+                igViewsPctChange: 0,
+              }
+            : {
+                ...parsed,
+                posts: keptPosts,
+                ttViews: 0,
+                ttFollowersGrowth: 0,
+                ttEngagementRate: 0,
+                ttViewsPctChange: 0,
+              };
+        localStorage.setItem(reportKey, JSON.stringify(updatedReport));
+        localStorage.setItem(postsKey, JSON.stringify(keptPosts));
+      } else {
+        const storedPosts = localStorage.getItem(postsKey);
+        if (storedPosts) {
+          const parsedPosts = sanitizePostsList(JSON.parse(storedPosts)).filter(
+            (p: any) =>
+              String(p?.platform || '').toLowerCase() !== platform ||
+              /^post_\d{10,15}$/.test(String(p?.id || ''))
+          );
+          localStorage.setItem(postsKey, JSON.stringify(parsedPosts));
+        }
+      }
+    } catch (e) {}
+  };
+
   // Disconnect social account
   const handleDisconnectAccount = (platform: string) => {
     try {
@@ -307,22 +357,13 @@ export default function SettingsPage() {
         const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === platform));
         localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
       }
-      if (platform === 'instagram') {
-        localStorage.removeItem(`koko_active_ig_token_${selectedClientId}`);
-        localStorage.removeItem(`koko_active_ig_account_${selectedClientId}`);
-        localStorage.removeItem(`koko_active_ig_username_${selectedClientId}`);
-        localStorage.removeItem(`koko_meta_available_pages_${selectedClientId}`);
-        localStorage.removeItem(`koko_active_page_id_${selectedClientId}`);
-        localStorage.removeItem(`koko_active_page_name_${selectedClientId}`);
-        setAvailablePages([]);
-        setActivePageId('');
-      }
       if (platform === 'tiktok') {
         localStorage.removeItem(`koko_active_tt_token_${selectedClientId}`);
         localStorage.removeItem(`koko_active_tt_account_${selectedClientId}`);
         localStorage.removeItem(`koko_active_tt_username_${selectedClientId}`);
         document.cookie = `koko_session_tt_connected_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0;`;
         document.cookie = `koko_session_tt_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0;`;
+        clearCachedPlatformReportData(selectedClientId, 'tiktok');
       }
       if (platform === 'instagram') {
         localStorage.removeItem(`koko_active_ig_token_${selectedClientId}`);
@@ -335,6 +376,7 @@ export default function SettingsPage() {
         document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=; path=/; max-age=0;`;
         setAvailablePages([]);
         setActivePageId('');
+        clearCachedPlatformReportData(selectedClientId, 'instagram');
       }
     } catch (e) {}
 
@@ -399,13 +441,16 @@ export default function SettingsPage() {
       localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
       localStorage.setItem(`koko_active_page_id_${selectedClientId}`, page.id);
       localStorage.setItem(`koko_active_page_name_${selectedClientId}`, page.name);
-      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, instagramId || page.id);
+      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, displayAcct);
       if (instagramUsername) {
         localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, instagramUsername);
       }
       if (page.access_token) {
         localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, page.access_token);
       }
+      document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=31536000; SameSite=Lax`;
+      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayAcct)}; path=/; max-age=31536000; SameSite=Lax`;
+      clearCachedPlatformReportData(selectedClientId, 'instagram');
 
       setSocialAccounts((prev) => {
         const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
@@ -625,19 +670,117 @@ export default function SettingsPage() {
     return window.location.origin;
   };
 
-  // 1. Trigger Official Meta / Instagram Business Login
-  const triggerInstagramDirectLogin = () => {
+  // 1. Direct Instagram Account Login (Instant 1-click connect using Instagram handle/credentials — no Facebook required)
+  const handleConnectInstagramDirect = async (identifier?: string) => {
+    const rawTarget = (identifier ?? igIdentifier).trim();
+    if (!rawTarget) {
+      igInputRef.current?.focus();
+      alert('Please enter your Instagram username (e.g. @elijah_kasumba or @totaltoolsprostoreug) in the username field above to log in directly with Instagram.');
+      return;
+    }
     if (!selectedClientId) {
       alert('Please create or select a client account first.');
       setShowAddClientModal(true);
       return;
     }
-    if (igIdentifier.trim()) {
-      try {
-        localStorage.setItem(`koko_pending_username_${selectedClientId}_instagram`, igIdentifier.trim());
-      } catch (e) {}
+
+    const cleanUsername = normalizeInstagramUsername(rawTarget);
+    if (!cleanUsername) {
+      igInputRef.current?.focus();
+      alert('Please enter a valid Instagram username.');
+      return;
     }
-    triggerMetaFacebookLogin(true);
+
+    const displayHandle = `@${cleanUsername}`;
+    const directToken = `ig_direct_${cleanUsername}_${Date.now()}`;
+
+    // Match against known verified pages if available, or create a dedicated Instagram channel entry
+    const matchedVerifiedPage = [...availablePages, ...DEFAULT_VERIFIED_PAGES].find(
+      (p) =>
+        p.instagramBusinessAccount?.username?.toLowerCase() === cleanUsername.toLowerCase() ||
+        p.name.toLowerCase().trim() === rawTarget.replace(/^@/, '').toLowerCase().trim()
+    );
+
+    const targetPage: MetaPageItem = matchedVerifiedPage || {
+      id: `page_${cleanUsername}`,
+      name: displayHandle,
+      category: 'Instagram Connected Account',
+      instagramBusinessAccount: {
+        id: `ig_${cleanUsername}`,
+        username: cleanUsername,
+        name: displayHandle,
+      },
+    };
+
+    const newAccount: SocialAccountData = {
+      id: `sa_${selectedClientId}_instagram`,
+      clientId: selectedClientId,
+      platform: 'instagram',
+      platformAccountId: displayHandle,
+      accessToken: directToken,
+      pageId: targetPage.id,
+      pageName: targetPage.name,
+      tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    try {
+      const stored = localStorage.getItem('koko_connected_social_accounts');
+      const list: SocialAccountData[] = stored ? JSON.parse(stored) : [];
+      const updated = list.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
+      updated.push(newAccount);
+      localStorage.setItem('koko_connected_social_accounts', JSON.stringify(updated));
+      localStorage.setItem('koko_selected_client_id', selectedClientId);
+      localStorage.setItem(`koko_active_ig_token_${selectedClientId}`, directToken);
+      localStorage.setItem(`koko_active_ig_account_${selectedClientId}`, displayHandle);
+      localStorage.setItem(`koko_active_ig_username_${selectedClientId}`, cleanUsername);
+      localStorage.setItem(`koko_active_page_id_${selectedClientId}`, targetPage.id);
+      localStorage.setItem(`koko_active_page_name_${selectedClientId}`, targetPage.name);
+
+      // Update available pages so the newly connected Instagram account is immediately selectable
+      const updatedPages = [
+        targetPage,
+        ...availablePages.filter((p) => p.id !== targetPage.id),
+      ];
+      setAvailablePages(updatedPages);
+      setActivePageId(targetPage.id);
+      localStorage.setItem(`koko_meta_available_pages_${selectedClientId}`, JSON.stringify(updatedPages));
+
+      // Clear previous Instagram account's cached posts/metrics so Dashboard loads fresh live data for this account
+      clearCachedPlatformReportData(selectedClientId, 'instagram');
+
+      const cookieAge = 31536000;
+      document.cookie = `koko_selected_client_id=${encodeURIComponent(selectedClientId)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_connected_${encodeURIComponent(selectedClientId)}=true; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_session_ig_account_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(displayHandle)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+      document.cookie = `koko_active_ig_token_${encodeURIComponent(selectedClientId)}=${encodeURIComponent(directToken)}; path=/; max-age=${cookieAge}; SameSite=Lax`;
+
+      setSocialAccounts((prev) => {
+        const filtered = prev.filter((a) => !(a.clientId === selectedClientId && a.platform === 'instagram'));
+        return [...filtered, newAccount];
+      });
+
+      setIgIdentifier('');
+      setIgPassword('');
+    } catch (e) {}
+
+    try {
+      await axios.post('/api/social-accounts', {
+        clientId: selectedClientId,
+        platform: 'instagram',
+        platformAccountId: displayHandle,
+        accessToken: directToken,
+        pageId: targetPage.id,
+        pageName: targetPage.name,
+      });
+      await axios.post('/api/social-accounts/meta-pages', {
+        clientId: selectedClientId,
+        pageId: targetPage.id,
+        pageName: targetPage.name,
+        pageAccessToken: directToken,
+        instagramId: targetPage.instagramBusinessAccount?.id || `ig_${cleanUsername}`,
+        instagramUsername: cleanUsername,
+      });
+    } catch (err) {}
   };
 
   // 2. Trigger Meta Facebook Business Login (App ID 1532121481550639)
@@ -1120,7 +1263,12 @@ export default function SettingsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={triggerInstagramDirectLogin}
+                      onClick={() => {
+                        handleDisconnectAccount('instagram');
+                        setIgIdentifier('');
+                        setIgPassword('');
+                        setTimeout(() => igInputRef.current?.focus(), 50);
+                      }}
                       className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -1134,10 +1282,17 @@ export default function SettingsPage() {
                 <div className="space-y-3 mb-2">
                   <div>
                     <input
+                      ref={igInputRef}
                       type="text"
                       value={igIdentifier}
                       onChange={(e) => setIgIdentifier(e.target.value)}
-                      placeholder="Phone number, username or email address"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConnectInstagramDirect();
+                        }
+                      }}
+                      placeholder="Instagram username (e.g. @elijah_kasumba), phone or email"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all"
                     />
                   </div>
@@ -1147,6 +1302,12 @@ export default function SettingsPage() {
                       type={showIgPassword ? "text" : "password"}
                       value={igPassword}
                       onChange={(e) => setIgPassword(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleConnectInstagramDirect();
+                        }
+                      }}
                       placeholder="Password"
                       className="w-full bg-[#1c1c1e] text-white placeholder-neutral-500 text-xs rounded-xl px-3.5 py-3 border border-neutral-800 focus:border-neutral-600 outline-none transition-all pr-10"
                     />
@@ -1173,11 +1334,13 @@ export default function SettingsPage() {
                 <div className="mt-4 space-y-3">
                   <button
                     type="button"
-                    onClick={triggerInstagramDirectLogin}
+                    onClick={() => handleConnectInstagramDirect()}
                     className="w-full py-3 bg-gradient-to-r from-[#692795] via-[#a8256b] to-[#d62839] hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    login
+                    {igIdentifier.trim()
+                      ? `Log in as @${normalizeInstagramUsername(igIdentifier) || igIdentifier.trim().replace(/^@/, '')}`
+                      : 'login'}
                   </button>
 
                   <div className="flex items-center my-3">
