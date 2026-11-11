@@ -21,8 +21,9 @@ export async function GET(request: Request) {
   }
 
   try {
+    const whereClause = clientId === 'all' ? {} : { clientId };
     const accounts = await prisma.socialAccount.findMany({
-      where: { clientId },
+      where: whereClause,
       include: { client: true },
       orderBy: { updatedAt: 'desc' },
     });
@@ -40,6 +41,16 @@ export async function GET(request: Request) {
           tokenExpiresAt: acc.tokenExpiresAt?.toISOString(),
         });
       });
+      if (clientId === 'all') {
+        const serverAll = getServerSocialAccounts('all');
+        const merged: any[] = [...serializeData(accounts)];
+        serverAll.forEach((sa) => {
+          if (!merged.some((m: any) => m.clientId === sa.clientId && m.platform === sa.platform)) {
+            merged.push(sa);
+          }
+        });
+        return NextResponse.json(merged);
+      }
       return NextResponse.json(serializeData(accounts));
     }
 

@@ -152,9 +152,9 @@ export function normalizeInstagramUsername(raw?: string | null): string {
 }
 
 export function resolveInstagramUsername(
-  platformAccountId?: string,
-  pageId?: string,
-  pageName?: string
+  platformAccountId?: string | null,
+  pageId?: string | null,
+  pageName?: string | null
 ): string {
   const candidates = [platformAccountId, pageId, pageName]
     .map((v) => (v || '').replace(/^@/, '').trim())

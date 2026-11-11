@@ -80,6 +80,7 @@ export function getServerSocialAccounts(clientId?: string): SocialAccountData[] 
   const store = ensureStoreExists();
   const list = store.socialAccounts || [];
   if (!clientId) return [];
+  if (clientId === 'all') return list;
   return list.filter((a) => a.clientId === clientId);
 }
 
