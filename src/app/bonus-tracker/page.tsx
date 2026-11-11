@@ -26,6 +26,7 @@ import {
   X,
   Link as LinkIcon,
   AlertCircle,
+  Calendar,
 } from 'lucide-react';
 import { ContentPostData, ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 import {
@@ -77,6 +78,20 @@ export default function BonusTrackerPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copiedCsv, setCopiedCsv] = useState<boolean>(false);
 
+  // Month & Date Range Filter State ('ALL' = all months, 'MONTH' = specific YYYY-MM, 'CUSTOM' = startDate..endDate)
+  const [dateFilterMode, setDateFilterMode] = useState<'ALL' | 'MONTH' | 'CUSTOM'>('ALL');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [startDate, setStartDate] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   // Add 50K+ Video by URL or Add Account Modal state
   const [showAddVideoModal, setShowAddVideoModal] = useState<boolean>(false);
   const [videoUrlInput, setVideoUrlInput] = useState<string>('');
@@ -86,6 +101,7 @@ export default function BonusTrackerPage() {
   const [videoViewsInput, setVideoViewsInput] = useState<string>('50000');
   const [videoLikesInput, setVideoLikesInput] = useState<string>('0');
   const [videoCommentsInput, setVideoCommentsInput] = useState<string>('0');
+  const [videoDateInput, setVideoDateInput] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [videoThumbnailInput, setVideoThumbnailInput] = useState<string>('');
   const [isFetchingPreview, setIsFetchingPreview] = useState<boolean>(false);
   const [addVideoError, setAddVideoError] = useState<string>('');
@@ -114,6 +130,57 @@ export default function BonusTrackerPage() {
   const getVideoUniqueKey = (v: Pick<BonusVideoItem, 'platform' | 'postId' | 'id' | 'permalink'>) => {
     const rawId = String(v.postId || v.id || v.permalink || '').trim();
     return `${String(v.platform || '').toLowerCase()}_${rawId}`;
+  };
+
+  // Helpers for Month & Date Range Filtering
+  const handleSelectMonthFilter = (yyyyMm: string) => {
+    if (!yyyyMm || yyyyMm === 'ALL') {
+      setDateFilterMode('ALL');
+      return;
+    }
+    setSelectedMonth(yyyyMm);
+    setDateFilterMode('MONTH');
+    const [yr, mo] = yyyyMm.split('-').map(Number);
+    if (yr && mo) {
+      const firstDay = `${yr}-${String(mo).padStart(2, '0')}-01`;
+      const lastDate = new Date(yr, mo, 0).getDate();
+      const lastDay = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDate).padStart(2, '0')}`;
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    }
+  };
+
+  const formatMonthLabel = (yyyyMm: string) => {
+    if (!yyyyMm || !yyyyMm.includes('-')) return 'All Months';
+    const [yr, mo] = yyyyMm.split('-').map(Number);
+    if (!yr || !mo) return yyyyMm;
+    const d = new Date(yr, mo - 1, 1);
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const formatVideoDateBadge = (iso?: string | null) => {
+    if (!iso) return 'Recent';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Recent';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const matchesActiveDateFilter = (isoDate?: string | null): boolean => {
+    if (dateFilterMode === 'ALL') return true;
+    if (!isoDate) return false;
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return false;
+
+    if (dateFilterMode === 'MONTH') {
+      const videoMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return videoMonth === selectedMonth;
+    }
+
+    // CUSTOM date range
+    const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : 0;
+    const endMs = endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : Number.MAX_SAFE_INTEGER;
+    const t = d.getTime();
+    return t >= startMs && t <= endMs;
   };
 
   // 1. Load persisted tracked videos & cached scanned videos on mount, then discover all connected accounts
@@ -555,10 +622,12 @@ export default function BonusTrackerPage() {
     }
   };
 
-  // Pick all 50K+ videos currently visible
+  // Pick all 50K+ videos currently visible (matching active month/date filter)
   const handlePickAllQualifying = () => {
     const qualifying = scannedVideos.filter(
-      (v) => (Number(v.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD
+      (v) =>
+        (Number(v.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD &&
+        matchesActiveDateFilter(v.publishedAt)
     );
     const trackedMap = new Map<string, BonusVideoItem>();
     trackedVideos.forEach((tv) => trackedMap.set(getVideoUniqueKey(tv), tv));
@@ -568,10 +637,12 @@ export default function BonusTrackerPage() {
       (a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0)
     );
     setTrackedVideos(updatedTracked);
-    setUnpickedIds([]);
+    const pickedKeys = new Set(qualifying.map((q) => getVideoUniqueKey(q)));
+    const remainingUnpicked = unpickedIds.filter((id) => !pickedKeys.has(id));
+    setUnpickedIds(remainingUnpicked);
     try {
       localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(updatedTracked));
-      localStorage.setItem(STORAGE_UNPICKED_IDS_KEY, JSON.stringify([]));
+      localStorage.setItem(STORAGE_UNPICKED_IDS_KEY, JSON.stringify(remainingUnpicked));
     } catch (e) {}
   };
 
@@ -617,6 +688,9 @@ export default function BonusTrackerPage() {
     const accountKey = `${videoPlatformInput}:${cleanUser.toLowerCase()}`;
 
     const matchedAcc = connectedAccounts.find((a) => a.id === accountKey);
+    const publishedIso = videoDateInput
+      ? new Date(`${videoDateInput}T12:00:00`).toISOString()
+      : new Date().toISOString();
     const newVideo: BonusVideoItem = {
       id: `bonus_${Date.now()}`,
       postId: `bonus_${Date.now()}`,
@@ -627,7 +701,7 @@ export default function BonusTrackerPage() {
       likesCount: Number(String(videoLikesInput).replace(/,/g, '')) || 0,
       commentsCount: Number(String(videoCommentsInput).replace(/,/g, '')) || 0,
       sharesCount: 0,
-      publishedAt: new Date().toISOString(),
+      publishedAt: publishedIso,
       isTopPerformer: true,
       thumbnailUrl: videoThumbnailInput.trim() || null,
       permalink: videoUrlInput.trim() || null,
@@ -694,14 +768,47 @@ export default function BonusTrackerPage() {
     await discoverAndScanConnectedAccounts();
   };
 
-  // Per-account video counts & 50K+ counts
+  // Build list of selectable months (recent 12 months + any months present in scanned/tracked videos)
+  const availableMonthsWithCounts = useMemo(() => {
+    const monthCounts = new Map<string, number>();
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthCounts.set(ym, 0);
+    }
+
+    scannedVideos.forEach((v) => {
+      if ((Number(v.viewsCount) || 0) < BONUS_VIEW_THRESHOLD) return;
+      if (!v.publishedAt) return;
+      const d = new Date(v.publishedAt);
+      if (isNaN(d.getTime())) return;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthCounts.set(ym, (monthCounts.get(ym) || 0) + 1);
+    });
+
+    return Array.from(monthCounts.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([ym, count]) => ({
+        ym,
+        label: formatMonthLabel(ym),
+        count,
+      }));
+  }, [scannedVideos]);
+
+  // Per-account video counts & 50K+ counts (respecting active month/date filter)
   const accountStatsMap = useMemo(() => {
     const map = new Map<string, { totalVideos: number; qualifying50k: number; trackedCount: number; topViews: number }>();
     connectedAccounts.forEach((acc) => {
-      const accVideos = scannedVideos.filter((v) => v.accountKey === acc.id);
+      const accVideos = scannedVideos.filter(
+        (v) => v.accountKey === acc.id && matchesActiveDateFilter(v.publishedAt)
+      );
       const q50k = accVideos.filter((v) => (Number(v.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD);
       const tracked = trackedVideos.filter(
-        (tv) => tv.accountKey === acc.id && (Number(tv.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD
+        (tv) =>
+          tv.accountKey === acc.id &&
+          (Number(tv.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD &&
+          matchesActiveDateFilter(tv.publishedAt)
       );
       const topViews = accVideos.reduce((max, v) => Math.max(max, Number(v.viewsCount) || 0), 0);
       map.set(acc.id, {
@@ -712,16 +819,28 @@ export default function BonusTrackerPage() {
       });
     });
     return map;
-  }, [connectedAccounts, scannedVideos, trackedVideos]);
+  }, [connectedAccounts, scannedVideos, trackedVideos, dateFilterMode, selectedMonth, startDate, endDate]);
 
-  // All 50K+ qualifying videos across connected accounts
+  // All 50K+ qualifying videos across connected accounts for active month/date filter
   const allQualifying50kVideos = useMemo(() => {
-    return scannedVideos.filter((v) => (Number(v.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD);
-  }, [scannedVideos]);
+    return scannedVideos.filter(
+      (v) =>
+        (Number(v.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD &&
+        matchesActiveDateFilter(v.publishedAt)
+    );
+  }, [scannedVideos, dateFilterMode, selectedMonth, startDate, endDate]);
+
+  // Scanned videos matching active month/date filter
+  const dateFilteredScannedVideos = useMemo(() => {
+    return scannedVideos.filter((v) => matchesActiveDateFilter(v.publishedAt));
+  }, [scannedVideos, dateFilterMode, selectedMonth, startDate, endDate]);
 
   // Filtered videos for the Account Video Picker section
   const filteredPickerVideos = useMemo(() => {
     return scannedVideos.filter((v) => {
+      if (!matchesActiveDateFilter(v.publishedAt)) {
+        return false;
+      }
       const views = Number(v.viewsCount) || 0;
       if (viewFilterMode === '50k_only' && views < BONUS_VIEW_THRESHOLD) {
         return false;
@@ -741,12 +860,13 @@ export default function BonusTrackerPage() {
       }
       return true;
     });
-  }, [scannedVideos, viewFilterMode, selectedAccountKey, selectedPlatform, searchQuery]);
+  }, [scannedVideos, viewFilterMode, selectedAccountKey, selectedPlatform, searchQuery, dateFilterMode, selectedMonth, startDate, endDate]);
 
   // Filtered Tracked Bonus Videos
   const filteredTrackedVideos = useMemo(() => {
     return trackedVideos.filter((v) => {
       if ((Number(v.viewsCount) || 0) < BONUS_VIEW_THRESHOLD) return false;
+      if (!matchesActiveDateFilter(v.publishedAt)) return false;
       if (selectedAccountKey !== 'ALL' && v.accountKey !== selectedAccountKey) return false;
       if (selectedPlatform !== 'all' && v.platform !== selectedPlatform) return false;
       if (searchQuery.trim()) {
@@ -758,7 +878,7 @@ export default function BonusTrackerPage() {
       }
       return true;
     });
-  }, [trackedVideos, selectedAccountKey, selectedPlatform, searchQuery]);
+  }, [trackedVideos, selectedAccountKey, selectedPlatform, searchQuery, dateFilterMode, selectedMonth, startDate, endDate]);
 
   // Summary KPIs
   const summaryStats = useMemo(() => {
@@ -803,6 +923,8 @@ export default function BonusTrackerPage() {
   // Export Tracked Bonus Videos as CSV
   const buildBonusCsv = () => {
     const headers = [
+      'Bonus Month',
+      'Published Date',
       'Platform',
       'Account Handle',
       'Account Name',
@@ -811,14 +933,20 @@ export default function BonusTrackerPage() {
       'Likes',
       'Comments',
       'Bonus Tier',
-      'Published Date',
       'Video Link',
     ];
     const rows = filteredTrackedVideos.map((v) => {
       const views = Number(v.viewsCount) || 0;
       const tier = getBonusTierBadge(views).label;
-      const dateStr = v.publishedAt ? new Date(v.publishedAt).toISOString().split('T')[0] : '';
+      const d = v.publishedAt ? new Date(v.publishedAt) : null;
+      const validDate = d && !isNaN(d.getTime()) ? d : null;
+      const dateStr = validDate ? validDate.toISOString().split('T')[0] : '';
+      const monthStr = validDate
+        ? validDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : 'All Time';
       return [
+        `"${monthStr}"`,
+        `"${dateStr}"`,
         `"${v.platform.toUpperCase()}"`,
         `"${v.accountHandle}"`,
         `"${(v.accountDisplayName || '').replace(/"/g, '""')}"`,
@@ -827,7 +955,6 @@ export default function BonusTrackerPage() {
         Number(v.likesCount) || 0,
         Number(v.commentsCount) || 0,
         `"${tier}"`,
-        `"${dateStr}"`,
         `"${v.permalink || ''}"`,
       ];
     });
@@ -847,7 +974,13 @@ export default function BonusTrackerPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `koko_bonus_tracker_50k_videos_${new Date().toISOString().split('T')[0]}.csv`);
+    const periodSuffix =
+      dateFilterMode === 'MONTH'
+        ? selectedMonth
+        : dateFilterMode === 'CUSTOM'
+        ? `${startDate}_to_${endDate}`
+        : new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `koko_bonus_tracker_50k_videos_${periodSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -949,6 +1082,145 @@ export default function BonusTrackerPage() {
                 {summaryStats.totalBonusViews.toLocaleString()} total
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 1B. Bonus Month & Date Range Picker Bar */}
+      <div className="bg-white rounded-3xl border border-gray-200 p-5 sm:p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-200">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm font-black text-gray-900 uppercase tracking-tight">
+                Filter Bonuses by Month & Date
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-black text-amber-300">
+                {dateFilterMode === 'ALL'
+                  ? 'Showing: All Months'
+                  : dateFilterMode === 'MONTH'
+                  ? `Month: ${formatMonthLabel(selectedMonth)}`
+                  : `${startDate} to ${endDate}`}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Pick a specific month or custom date range to view and export 50K+ bonus videos for that period.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* Quick Period Buttons */}
+          <div className="inline-flex rounded-xl bg-gray-100 p-1 border border-gray-200">
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('ALL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                dateFilterMode === 'ALL'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              All Months
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                handleSelectMonthFilter(
+                  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                );
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                dateFilterMode === 'MONTH' &&
+                selectedMonth ===
+                  `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                handleSelectMonthFilter(
+                  `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
+                );
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                dateFilterMode === 'MONTH' &&
+                selectedMonth ===
+                  `${new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getFullYear()}-${String(
+                    new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getMonth() + 1
+                  ).padStart(2, '0')}`
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              Last Month
+            </button>
+          </div>
+
+          {/* Month Dropdown Selector */}
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+            <span className="text-[11px] font-bold text-gray-500 uppercase">Month:</span>
+            <select
+              value={dateFilterMode === 'MONTH' ? selectedMonth : 'ALL'}
+              onChange={(e) => handleSelectMonthFilter(e.target.value)}
+              className="bg-transparent text-xs font-extrabold text-gray-900 outline-none cursor-pointer"
+            >
+              <option value="ALL">All Months</option>
+              {availableMonthsWithCounts.map((m) => (
+                <option key={m.ym} value={m.ym}>
+                  {m.label} {m.count > 0 ? `(${m.count} >= 50K)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Native Calendar Month Picker */}
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleSelectMonthFilter(e.target.value);
+                }
+              }}
+              aria-label="Pick bonus month"
+              className="bg-transparent text-xs font-bold text-gray-900 outline-none cursor-pointer"
+            />
+          </div>
+
+          {/* Exact Start / End Date Range Pickers */}
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setDateFilterMode('CUSTOM');
+              }}
+              aria-label="Bonus start date"
+              className="bg-transparent text-xs font-semibold text-gray-800 outline-none cursor-pointer"
+            />
+            <span className="text-[11px] text-gray-400 font-bold">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setDateFilterMode('CUSTOM');
+              }}
+              aria-label="Bonus end date"
+              className="bg-transparent text-xs font-semibold text-gray-800 outline-none cursor-pointer"
+            />
           </div>
         </div>
       </div>
@@ -1125,14 +1397,27 @@ export default function BonusTrackerPage() {
             </div>
             <div className="max-w-md mx-auto">
               <h3 className="text-sm font-extrabold text-gray-900">
-                No 50K+ Bonus Videos Picked Yet for This Filter
+                {dateFilterMode === 'MONTH'
+                  ? `No 50K+ Bonus Videos Found for ${formatMonthLabel(selectedMonth)}`
+                  : dateFilterMode === 'CUSTOM'
+                  ? `No 50K+ Bonus Videos Found from ${startDate} to ${endDate}`
+                  : 'No 50K+ Bonus Videos Picked Yet for This Filter'}
               </h3>
               <p className="text-xs text-gray-500 mt-1">
-                Pick any qualifying 50K+ video from the connected accounts section below, or click{' '}
+                Pick any qualifying 50K+ video from the connected accounts section below, switch the month filter, or click{' '}
                 <strong>Add 50K+ Video Link</strong> to track a specific 50K+ reel or TikTok video.
               </p>
             </div>
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex items-center justify-center flex-wrap gap-2 pt-2">
+              {dateFilterMode !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilterMode('ALL')}
+                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-amber-300 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Show All Months
+                </button>
+              )}
               {allQualifying50kVideos.length > 0 && (
                 <button
                   type="button"
@@ -1205,9 +1490,14 @@ export default function BonusTrackerPage() {
                       {/* Bottom Overlay Info */}
                       <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs font-extrabold text-emerald-400 truncate">
-                            {video.accountHandle}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-extrabold text-emerald-400 truncate">
+                              {video.accountHandle}
+                            </p>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-black/70 text-neutral-300 border border-neutral-700">
+                              {formatVideoDateBadge(video.publishedAt)}
+                            </span>
+                          </div>
                           <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug mt-0.5">
                             {video.title}
                           </h3>
@@ -1313,7 +1603,7 @@ export default function BonusTrackerPage() {
                     : 'text-gray-600 hover:text-black'
                 }`}
               >
-                All Scanned Videos ({scannedVideos.length})
+                All Scanned Videos ({dateFilteredScannedVideos.length})
               </button>
             </div>
 
@@ -1403,16 +1693,21 @@ export default function BonusTrackerPage() {
                             <p className="font-bold text-gray-900 line-clamp-2 leading-snug">
                               {video.title || 'Social Video'}
                             </p>
-                            {video.permalink && (
-                              <a
-                                href={video.permalink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline mt-1"
-                              >
-                                <ExternalLink className="w-3 h-3" /> Open post
-                              </a>
-                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                                {formatVideoDateBadge(video.publishedAt)}
+                              </span>
+                              {video.permalink && (
+                                <a
+                                  href={video.permalink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
+                                >
+                                  <ExternalLink className="w-3 h-3" /> Open post
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1593,15 +1888,29 @@ export default function BonusTrackerPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Video Caption / Title</label>
-                <input
-                  type="text"
-                  value={videoTitleInput}
-                  onChange={(e) => setVideoTitleInput(e.target.value)}
-                  placeholder="e.g. Behind the scenes campaign video"
-                  className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-medium outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Video Caption / Title</label>
+                  <input
+                    type="text"
+                    value={videoTitleInput}
+                    onChange={(e) => setVideoTitleInput(e.target.value)}
+                    placeholder="e.g. Behind the scenes campaign video"
+                    className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-medium outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">
+                    Published Date / Bonus Month
+                  </label>
+                  <input
+                    type="date"
+                    value={videoDateInput}
+                    onChange={(e) => setVideoDateInput(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-300 text-xs rounded-xl p-2.5 text-gray-900 font-semibold outline-none"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
