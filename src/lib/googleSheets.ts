@@ -323,3 +323,285 @@ export async function pushTrackerResultsToSheet(
     };
   }
 }
+
+export interface BonusSheetVideoPayload {
+  id?: string;
+  platform: string;
+  accountHandle: string;
+  accountDisplayName?: string;
+  title?: string;
+  viewsCount: number;
+  likesCount?: number;
+  commentsCount?: number;
+  bonusTier?: string;
+  publishedAt?: string;
+  permalink?: string | null;
+}
+
+export interface BonusSheetSyncResult {
+  success: boolean;
+  message: string;
+  sheetId?: string;
+  tabName?: string;
+  month?: string;
+  syncedVideosCount?: number;
+  syncedItems?: Array<{
+    accountHandle: string;
+    platform: string;
+    title: string;
+    viewsCount: number;
+    bonusTier: string;
+    publishedDate: string;
+  }>;
+  error?: string;
+  simulated?: boolean;
+}
+
+/**
+ * Extracts raw Google Spreadsheet ID if a full docs.google.com/spreadsheets/d/<ID>/... URL was passed
+ */
+export function extractSpreadsheetId(input?: string): string {
+  const raw = (input || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return raw;
+}
+
+/**
+ * Pushes 50K+ qualifying Bonus Tracker videos for a target month/period to a Google Sheet tab
+ */
+export async function pushBonusVideosToSheet(
+  month: string,
+  videos: BonusSheetVideoPayload[],
+  customSheetId?: string,
+  customTabName?: string
+): Promise<BonusSheetSyncResult> {
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  const rawSheetInput =
+    customSheetId ||
+    process.env.BONUS_TRACKER_SHEET_ID ||
+    process.env.PERFORMANCE_TRACKER_SHEET_ID ||
+    '';
+  const sheetId = extractSpreadsheetId(rawSheetInput);
+  const desiredTabName = (customTabName || 'Bonus Tracker').trim();
+
+  // Filter strictly for >= 50,000 views
+  const qualifyingVideos = (videos || []).filter((v) => (Number(v.viewsCount) || 0) >= 50000);
+
+  const syncedItems = qualifyingVideos.map((v) => {
+    const views = Number(v.viewsCount) || 0;
+    const tier =
+      v.bonusTier ||
+      (views >= 1_000_000
+        ? '1M+ Mega Viral Bonus'
+        : views >= 500_000
+        ? '500K+ Super Bonus'
+        : views >= 100_000
+        ? '100K+ High Performer'
+        : '50K+ Bonus Qualified');
+    const pubDate = v.publishedAt && !isNaN(new Date(v.publishedAt).getTime())
+      ? new Date(v.publishedAt).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    return {
+      accountHandle: v.accountHandle || '',
+      platform: String(v.platform || '').toUpperCase(),
+      title: v.title || '50K+ Bonus Video',
+      viewsCount: views,
+      bonusTier: tier,
+      publishedDate: pubDate,
+    };
+  });
+
+  if (!email || !privateKey || !sheetId) {
+    const missing: string[] = [];
+    if (!email) missing.push('GOOGLE_SERVICE_ACCOUNT_EMAIL');
+    if (!privateKey) missing.push('GOOGLE_PRIVATE_KEY');
+    if (!sheetId) missing.push('BONUS_TRACKER_SHEET_ID / Spreadsheet ID');
+
+    return {
+      success: false,
+      error: 'MISSING_CREDENTIALS',
+      message: `Google Sheets service account credentials missing in .env (${missing.join(
+        ', '
+      )}). Prepared ${qualifyingVideos.length} qualifying 50K+ bonus video rows for "${month}" — you can copy the rows directly into Google Sheets below or configure the Service Account.`,
+      simulated: true,
+      month,
+      sheetId: sheetId || 'Not Configured',
+      tabName: desiredTabName,
+      syncedVideosCount: qualifyingVideos.length,
+      syncedItems,
+    };
+  }
+
+  try {
+    // 1. Authenticate with Google Sheets API
+    const accessToken = await getGoogleServiceAccountToken(email, privateKey);
+
+    // 2. Fetch Spreadsheet Metadata to find or create the Bonus Tracker tab
+    const metaRes = await axios.get(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
+      }
+    );
+
+    const existingSheets: Array<{ properties?: { title?: string } }> =
+      metaRes.data?.sheets || [];
+    let targetTabTitle =
+      existingSheets.find(
+        (s) =>
+          String(s.properties?.title || '').toLowerCase() === desiredTabName.toLowerCase()
+      )?.properties?.title || '';
+
+    if (!targetTabTitle) {
+      // Try creating the Bonus Tracker tab automatically
+      try {
+        await axios.post(
+          `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
+          {
+            requests: [
+              {
+                addSheet: {
+                  properties: {
+                    title: desiredTabName,
+                  },
+                },
+              },
+            ],
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 10000,
+          }
+        );
+        targetTabTitle = desiredTabName;
+      } catch {
+        // Fallback to first sheet if addSheet isn't permitted
+        targetTabTitle = existingSheets[0]?.properties?.title || 'Sheet1';
+      }
+    }
+
+    // 3. Check if header row exists in A1:L1
+    const headerRange = `${targetTabTitle}!A1:L1`;
+    const headerRes = await axios.get(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+        headerRange
+      )}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
+      }
+    );
+
+    const existingHeader = headerRes.data?.values?.[0] || [];
+    const headerColumns = [
+      'Bonus Period / Month',
+      'Published Date',
+      'Platform',
+      'Account Handle',
+      'Account Name',
+      'Video Title',
+      'Views (50K+ Qualified)',
+      'Likes',
+      'Comments',
+      'Bonus Tier',
+      'Video Link',
+      'Synced Timestamp',
+    ];
+
+    if (existingHeader.length === 0) {
+      await axios.put(
+        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+          headerRange
+        )}?valueInputOption=USER_ENTERED`,
+        {
+          range: headerRange,
+          majorDimension: 'ROWS',
+          values: [headerColumns],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
+    }
+
+    // 4. Build rows for all 50K+ qualifying videos
+    const syncedAtStr = new Date().toISOString();
+    const rowsToAppend = qualifyingVideos.map((v, i) => {
+      const item = syncedItems[i];
+      return [
+        month,
+        item.publishedDate,
+        item.platform,
+        item.accountHandle,
+        v.accountDisplayName || item.accountHandle,
+        item.title,
+        item.viewsCount,
+        Number(v.likesCount) || 0,
+        Number(v.commentsCount) || 0,
+        item.bonusTier,
+        v.permalink || '',
+        syncedAtStr,
+      ];
+    });
+
+    // 5. Append rows to the target sheet tab
+    const appendRange = `${targetTabTitle}!A:L`;
+    await axios.post(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+        appendRange
+      )}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        majorDimension: 'ROWS',
+        values: rowsToAppend,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+
+    return {
+      success: true,
+      message: `Successfully synced ${rowsToAppend.length} qualifying 50K+ bonus videos (${month}) to Google Sheet tab "${targetTabTitle}"!`,
+      sheetId,
+      tabName: targetTabTitle,
+      month,
+      syncedVideosCount: rowsToAppend.length,
+      syncedItems,
+    };
+  } catch (err: any) {
+    const errorMsg =
+      err.response?.data?.error?.message ||
+      err.response?.data?.error_description ||
+      err.message ||
+      'Unknown Google Sheets API error';
+    console.error('Google Sheets Bonus Tracker push error:', errorMsg);
+    return {
+      success: false,
+      error: 'API_ERROR',
+      message: `Failed to sync 50K+ bonus videos to Google Sheets: ${errorMsg}`,
+      sheetId,
+      tabName: desiredTabName,
+      month,
+      syncedVideosCount: 0,
+      syncedItems,
+    };
+  }
+}

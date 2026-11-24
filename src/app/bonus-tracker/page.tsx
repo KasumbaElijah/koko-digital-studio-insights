@@ -27,6 +27,9 @@ import {
   Link as LinkIcon,
   AlertCircle,
   Calendar,
+  FileSpreadsheet,
+  Info,
+  XCircle,
 } from 'lucide-react';
 import { ContentPostData, ClientData, SocialAccountData, MetaPageItem } from '@/lib/types';
 import {
@@ -111,6 +114,19 @@ export default function BonusTrackerPage() {
   const [newAccPlatform, setNewAccPlatform] = useState<'instagram' | 'tiktok'>('instagram');
   const [newAccHandle, setNewAccHandle] = useState<string>('');
   const [newAccDisplayName, setNewAccDisplayName] = useState<string>('');
+
+  // Google Sheets Sync Modal State
+  const [showSheetModal, setShowSheetModal] = useState<boolean>(false);
+  const [isPushingSheet, setIsPushingSheet] = useState<boolean>(false);
+  const [sheetExportResponse, setSheetExportResponse] = useState<any | null>(null);
+  const [customSheetId, setCustomSheetId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('koko_bonus_google_sheet_id') || '';
+    }
+    return '';
+  });
+  const [customTabName, setCustomTabName] = useState<string>('Bonus Tracker');
+  const [copiedTsv, setCopiedTsv] = useState<boolean>(false);
 
   const getProxiedUrl = (url: string | null | undefined) => {
     if (!url) return '';
@@ -986,6 +1002,101 @@ export default function BonusTrackerPage() {
     document.body.removeChild(link);
   };
 
+  const activePeriodLabel = useMemo(() => {
+    if (dateFilterMode === 'MONTH') return formatMonthLabel(selectedMonth);
+    if (dateFilterMode === 'CUSTOM') return `${startDate} to ${endDate}`;
+    return `All Months (${new Date().getFullYear()})`;
+  }, [dateFilterMode, selectedMonth, startDate, endDate]);
+
+  // Copy Tab-Separated Values (TSV) for instant Cmd+V / Ctrl+V paste into Google Sheets
+  const handleCopyTsvForSheets = () => {
+    const headers = [
+      'Bonus Month',
+      'Published Date',
+      'Platform',
+      'Account Handle',
+      'Account Name',
+      'Video Title',
+      'Views (50K+ Qualified)',
+      'Likes',
+      'Comments',
+      'Bonus Tier',
+      'Video Link',
+    ];
+    const rows = filteredTrackedVideos.map((v) => {
+      const views = Number(v.viewsCount) || 0;
+      const tier = getBonusTierBadge(views).label;
+      const d = v.publishedAt ? new Date(v.publishedAt) : null;
+      const validDate = d && !isNaN(d.getTime()) ? d : null;
+      const dateStr = validDate ? validDate.toISOString().split('T')[0] : '';
+      const monthStr = validDate
+        ? validDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : activePeriodLabel;
+      return [
+        monthStr,
+        dateStr,
+        v.platform.toUpperCase(),
+        v.accountHandle,
+        (v.accountDisplayName || '').replace(/\t|\n/g, ' '),
+        (v.title || '').replace(/\t|\n/g, ' '),
+        views,
+        Number(v.likesCount) || 0,
+        Number(v.commentsCount) || 0,
+        tier,
+        v.permalink || '',
+      ];
+    });
+    const tsv = [headers.join('\t'), ...rows.map((r) => r.join('\t'))].join('\n');
+    navigator.clipboard.writeText(tsv);
+    setCopiedTsv(true);
+    setTimeout(() => setCopiedTsv(false), 2500);
+  };
+
+  // Push Tracked 50K+ Bonus Videos to Google Sheet via API
+  const handlePushToGoogleSheet = async () => {
+    if (filteredTrackedVideos.length === 0) return;
+    setIsPushingSheet(true);
+    setSheetExportResponse(null);
+    try {
+      if (typeof window !== 'undefined' && customSheetId.trim()) {
+        localStorage.setItem('koko_bonus_google_sheet_id', customSheetId.trim());
+      }
+      const payloadVideos = filteredTrackedVideos.map((v) => ({
+        id: v.id,
+        platform: v.platform,
+        accountHandle: v.accountHandle,
+        accountDisplayName: v.accountDisplayName,
+        title: v.title,
+        viewsCount: Number(v.viewsCount) || 0,
+        likesCount: Number(v.likesCount) || 0,
+        commentsCount: Number(v.commentsCount) || 0,
+        bonusTier: getBonusTierBadge(Number(v.viewsCount) || 0).label,
+        publishedAt: v.publishedAt,
+        permalink: v.permalink,
+      }));
+
+      const res = await axios.post('/api/bonus-tracker/export-sheet', {
+        month: activePeriodLabel,
+        videos: payloadVideos,
+        sheetId: customSheetId.trim() || undefined,
+        tabName: customTabName.trim() || 'Bonus Tracker',
+      });
+      setSheetExportResponse(res.data);
+    } catch (err: any) {
+      setSheetExportResponse({
+        success: false,
+        error: 'REQUEST_ERROR',
+        message:
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          'Failed to connect to Google Sheets export service',
+      });
+    } finally {
+      setIsPushingSheet(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-14">
       {/* 1. Top Hero Banner */}
@@ -1018,6 +1129,18 @@ export default function BonusTrackerPage() {
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isScanningAll ? 'animate-spin' : ''}`} />
               {isScanningAll ? 'Scanning Connected Accounts...' : 'Scan Connected Accounts Live'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSheetExportResponse(null);
+                setShowSheetModal(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-emerald-300 border border-emerald-500/40 text-xs font-extrabold rounded-xl transition-all cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Push to Google Sheet
             </button>
 
             <button
@@ -1369,6 +1492,18 @@ export default function BonusTrackerPage() {
                 Pick All 50K+ Videos ({allQualifying50kVideos.length})
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                setSheetExportResponse(null);
+                setShowSheetModal(true);
+              }}
+              disabled={filteredTrackedVideos.length === 0}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl transition-all cursor-pointer disabled:opacity-40 shadow-xs"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Push to Google Sheet
+            </button>
             <button
               type="button"
               onClick={handleCopyCsv}
@@ -2040,6 +2175,184 @@ export default function BonusTrackerPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Push 50K+ Bonus Videos to Google Sheet */}
+      {showSheetModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-gray-200 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-gray-950">
+                    Sync 50K+ Bonus Videos to Google Sheet
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Push {filteredTrackedVideos.length} tracked 50K+ videos for{' '}
+                    <strong className="text-gray-800">{activePeriodLabel}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSheetModal(false)}
+                className="text-gray-400 hover:text-gray-700 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Bonus Period / Month
+                  </label>
+                  <select
+                    value={dateFilterMode === 'MONTH' ? selectedMonth : 'ALL'}
+                    onChange={(e) => handleSelectMonthFilter(e.target.value)}
+                    className="w-full font-semibold bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 outline-none cursor-pointer"
+                  >
+                    <option value="ALL">All Months ({trackedVideos.length} videos)</option>
+                    {availableMonthsWithCounts.map((m) => (
+                      <option key={m.ym} value={m.ym}>
+                        {m.label} {m.count > 0 ? `(${m.count} >= 50K)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Target Sheet Tab Name
+                  </label>
+                  <input
+                    type="text"
+                    value={customTabName}
+                    onChange={(e) => setCustomTabName(e.target.value)}
+                    placeholder="Bonus Tracker"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 font-semibold outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Google Sheet URL or Spreadsheet ID (Optional Override)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Paste Google Sheet link or ID (defaults to BONUS_TRACKER_SHEET_ID)"
+                  value={customSheetId}
+                  onChange={(e) => setCustomSheetId(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-gray-900 font-mono outline-none"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Automatically appends the month&apos;s 50K+ qualifying videos (Platform, @Account, Title, Views, Likes, Comments, Tier, Link) to the target tab.
+                </p>
+              </div>
+
+              {/* Quick Copy for Direct Paste into Google Sheets */}
+              <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-gray-900">Instant Paste into Any Open Google Sheet</div>
+                  <div className="text-[11px] text-gray-500">
+                    Copy pre-formatted columns and press Cmd+V / Ctrl+V in cell A1 of any sheet.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyTsvForSheets}
+                  disabled={filteredTrackedVideos.length === 0}
+                  className="px-3 py-2 rounded-xl bg-black hover:bg-gray-800 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                >
+                  {copiedTsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedTsv ? 'Copied Rows!' : 'Copy Sheet Rows'}
+                </button>
+              </div>
+
+              {/* Sync Response Alert */}
+              {sheetExportResponse && (
+                <div
+                  className={`p-4 rounded-2xl border space-y-2 ${
+                    sheetExportResponse.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                      : sheetExportResponse.simulated
+                      ? 'bg-amber-50 border-amber-200 text-amber-950'
+                      : 'bg-rose-50 border-rose-200 text-rose-950'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-extrabold">
+                    {sheetExportResponse.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : sheetExportResponse.simulated ? (
+                      <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>
+                      {sheetExportResponse.success
+                        ? 'Google Sheet Synced Successfully'
+                        : sheetExportResponse.simulated
+                        ? 'Ready for Google Sheets (Service Account Notice)'
+                        : 'Google Sheets Sync Notice'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{sheetExportResponse.message}</p>
+                  {Array.isArray(sheetExportResponse.syncedItems) &&
+                    sheetExportResponse.syncedItems.length > 0 && (
+                      <div className="pt-2 border-t border-black/10 text-[11px] font-semibold space-y-1 max-h-28 overflow-y-auto">
+                        {sheetExportResponse.syncedItems.map((item: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              {item.platform} • <strong>{item.accountHandle}</strong> — {item.title}
+                            </span>
+                            <span className="font-black shrink-0">
+                              {Number(item.viewsCount || 0).toLocaleString()} views
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={handleDownloadCsv}
+                disabled={filteredTrackedVideos.length === 0}
+                className="text-xs font-bold text-gray-600 hover:text-black flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download CSV Instead
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSheetModal(false)}
+                  className="px-3.5 py-2 text-xs font-bold text-gray-600 hover:text-gray-900 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePushToGoogleSheet}
+                  disabled={isPushingSheet || filteredTrackedVideos.length === 0}
+                  className="px-4 py-2.5 text-xs font-extrabold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  {isPushingSheet ? 'Syncing to Google Sheet...' : 'Push 50K+ Videos to Sheet'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
