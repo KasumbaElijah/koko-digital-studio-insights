@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
-import { Layers, Key, Activity, Trophy } from 'lucide-react';
+import { HeaderNav } from '@/components/common/HeaderNav';
 
 export const metadata: Metadata = {
   title: 'Koko Digital Studio Insights - Social Media Analytics & PDF Reporting',
@@ -39,37 +39,8 @@ export default function RootLayout({
               </div>
             </Link>
 
-            {/* Navigation Links */}
-            <nav className="flex items-center flex-wrap gap-2">
-              <Link
-                href="/"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-200 transition-colors"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                Dashboard
-              </Link>
-              <Link
-                href="/performance-tracker"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-800/60 transition-colors"
-              >
-                <Activity className="w-3.5 h-3.5 text-blue-400" />
-                Performance Tracker
-              </Link>
-              <Link
-                href="/bonus-tracker"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-700/60 transition-colors"
-              >
-                <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                Bonus Tracker
-              </Link>
-              <Link
-                href="/settings"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-200 transition-colors"
-              >
-                <Key className="w-3.5 h-3.5" />
-                OAuth Integrations
-              </Link>
-            </nav>
+            {/* Role-Aware Navigation & Team Session Controls */}
+            <HeaderNav />
           </div>
         </header>
 

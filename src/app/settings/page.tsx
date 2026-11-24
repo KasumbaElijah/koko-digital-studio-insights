@@ -29,6 +29,7 @@ import {
   normalizeTikTokUsername,
   formatTikTokHandle,
 } from '@/lib/managedPages';
+import { TeamManagementSection } from '@/components/settings/TeamManagementSection';
 
 export default function SettingsPage() {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -381,6 +382,14 @@ export default function SettingsPage() {
     } catch (e) {}
 
     setSocialAccounts((prev) => prev.filter((a) => !(a.clientId === selectedClientId && a.platform === platform)));
+
+    if (selectedClientId) {
+      axios
+        .delete(
+          `/api/social-accounts?clientId=${encodeURIComponent(selectedClientId)}&platform=${encodeURIComponent(platform)}`
+        )
+        .catch(() => {});
+    }
   };
 
   // Fetch / Refresh available Meta Facebook Pages & Instagram accounts in the background (no redirects)
@@ -530,6 +539,19 @@ export default function SettingsPage() {
             ? { ...a, platformAccountId: formatTikTokHandle(a.platformAccountId) }
             : a
         );
+
+        // Repopulate browser localStorage from backend database if browser cache was cleared
+        if (accounts.length > 0) {
+          try {
+            const stored = localStorage.getItem('koko_connected_social_accounts');
+            const parsed: SocialAccountData[] = stored ? JSON.parse(stored) : [];
+            const otherClients = parsed.filter((a) => a.clientId !== selectedClientId);
+            localStorage.setItem(
+              'koko_connected_social_accounts',
+              JSON.stringify([...otherClients, ...accounts])
+            );
+          } catch {}
+        }
 
         setSocialAccounts(accounts);
 
@@ -1589,6 +1611,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Team Roles & Account Manager Assignments (Management Admin Only) */}
+      <TeamManagementSection clients={clients} availablePages={allSelectablePages} />
 
       {/* Add New Client Account Modal */}
       {showAddClientModal && (

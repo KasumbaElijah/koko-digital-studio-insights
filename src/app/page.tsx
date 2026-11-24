@@ -87,6 +87,13 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pdf-preview'>('dashboard');
   const [formatTab, setFormatTab] = useState<'comparison' | 'instagram' | 'tiktok'>('comparison');
   const [distributionTab, setDistributionTab] = useState<'split' | 'instagram' | 'tiktok'>('split');
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    role: 'ADMIN' | 'ACCOUNT_MANAGER';
+    assignedClientIds: string[];
+  } | null>(null);
   const [connectedPlatforms, setConnectedPlatforms] = useState<{
     instagram?: boolean;
     tiktok?: boolean;
@@ -94,6 +101,18 @@ export default function DashboardPage() {
     tiktokHandle?: string;
     pageName?: string;
   }>({});
+
+  // Fetch logged-in team user role & assigned accounts
+  useEffect(() => {
+    axios
+      .get('/api/auth/session')
+      .then((res) => {
+        if (res.data?.authenticated && res.data?.user) {
+          setCurrentUser(res.data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 1. Sync URL parameters on initial client mount, purge legacy cookies, & listen for OAuth messages
   useEffect(() => {
@@ -1257,14 +1276,20 @@ export default function DashboardPage() {
 
   // Save Strategy updates (Goals, Insights, Next Steps)
   const handleSaveStrategy = async (goals: string[], insights: string[], nextSteps: string[]) => {
+    const targetReportId =
+      safeReport.id && safeReport.id !== 'report-empty'
+        ? safeReport.id
+        : `report-${selectedClientId}`;
     try {
-      await axios.put(`/api/report-details/${safeReport.id}`, {
+      await axios.put(`/api/report-details/${targetReportId}`, {
+        clientId: selectedClientId,
         goals,
         insights,
         nextSteps,
       });
       setReport((prev) => ({
         ...prev,
+        id: targetReportId,
         goals,
         insights,
         nextSteps,
@@ -1273,6 +1298,7 @@ export default function DashboardPage() {
       console.warn('Strategy save DB call fallback to local state:', err);
       setReport((prev) => ({
         ...prev,
+        id: targetReportId,
         goals,
         insights,
         nextSteps,
@@ -1292,8 +1318,14 @@ export default function DashboardPage() {
     });
 
     const mergedPosts = [...updatedCurrentRangePosts, ...otherRangePosts];
+    const targetReportId =
+      safeReport.id && safeReport.id !== 'report-empty'
+        ? safeReport.id
+        : `report-${selectedClientId}`;
     const updatedReport = {
       ...report,
+      id: targetReportId,
+      clientId: selectedClientId,
       startDate,
       endDate,
       posts: mergedPosts,
@@ -1305,7 +1337,8 @@ export default function DashboardPage() {
     } catch (e) {}
 
     try {
-      await axios.put(`/api/report-details/${safeReport.id}`, {
+      await axios.put(`/api/report-details/${targetReportId}`, {
+        clientId: selectedClientId,
         posts: mergedPosts,
       });
     } catch (err) {
@@ -1344,6 +1377,58 @@ export default function DashboardPage() {
     }, 450);
   };
 
+  const isAdmin = !currentUser || currentUser.role === 'ADMIN';
+
+  // Filter selectable pages & clients based on Account Manager assignments
+  const roleFilteredPages = useMemo(() => {
+    if (isAdmin || !currentUser || currentUser.assignedClientIds.includes('*')) {
+      return availablePages;
+    }
+    const assignedSet = new Set(
+      (currentUser.assignedClientIds || []).map((x) =>
+        String(x || '')
+          .toLowerCase()
+          .replace(/^@/, '')
+          .trim()
+      )
+    );
+    const filtered = availablePages.filter((p) => {
+      const pid = String(p.id || '').toLowerCase();
+      const pname = String(p.name || '').toLowerCase();
+      const igUser = String(p.instagramBusinessAccount?.username || '')
+        .toLowerCase()
+        .replace(/^@/, '');
+      return (
+        assignedSet.has(pid) ||
+        assignedSet.has(pname) ||
+        (igUser && assignedSet.has(igUser))
+      );
+    });
+    return filtered.length > 0 ? filtered : availablePages;
+  }, [availablePages, currentUser, isAdmin]);
+
+  // Automatically switch Account Manager to their first assigned page if current page is not assigned to them
+  useEffect(() => {
+    if (!isAdmin && currentUser && roleFilteredPages.length > 0) {
+      const currentIsAllowed = roleFilteredPages.some((p) => p.id === activePageId);
+      if (!currentIsAllowed) {
+        handleSelectPage(roleFilteredPages[0]);
+      }
+    }
+  }, [isAdmin, currentUser, roleFilteredPages, activePageId]);
+
+  const handleSaveAndPreviewStrategy = async (
+    goals: string[],
+    insights: string[],
+    nextSteps: string[]
+  ) => {
+    await handleSaveStrategy(goals, insights, nextSteps);
+    setActiveTab('pdf-preview');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const formatData = getFormatDistribution(safeReport.posts || []);
   const formatComparisonData = getFormatComparison(safeReport.posts || []);
   const igFormatData = getFormatDistributionByPlatform(safeReport.posts || [], 'instagram');
@@ -1372,7 +1457,7 @@ export default function DashboardPage() {
             isSyncing={isSyncing}
             onPrintPdf={handlePrintPdf}
             connectedPlatforms={connectedPlatforms}
-            availablePages={availablePages}
+            availablePages={roleFilteredPages}
             activePageId={activePageId}
             onSelectPage={handleSelectPage}
           />
@@ -1630,22 +1715,24 @@ export default function DashboardPage() {
                 </div>
 
 
-                {/* Top Content Previews */}
+                {/* Top Content Previews (Read-only metrics for Account Managers) */}
                 <TopContentSection
                   clientName={selectedClient.name}
                   posts={safeReport.posts || []}
-                  onUpdatePosts={handleUpdatePosts}
+                  onUpdatePosts={isAdmin ? handleUpdatePosts : undefined}
                   onSyncPosts={() => handleLiveSync()}
                   isSyncing={isSyncing}
                 />
 
-                {/* Strategy Editors */}
+                {/* Strategy Editors (Editable Goals, Insights, Next Steps + Save & Live Preview) */}
                 <StrategyEditor
                   reportId={safeReport.id || 'report-default'}
                   initialGoals={safeReport.goals || []}
                   initialInsights={safeReport.insights || []}
                   initialNextSteps={safeReport.nextSteps || []}
                   onSaveStrategy={handleSaveStrategy}
+                  onSaveAndPreview={handleSaveAndPreviewStrategy}
+                  onDownloadPdf={handlePrintPdf}
                 />
               </>
             )}
@@ -1654,16 +1741,27 @@ export default function DashboardPage() {
 
         {/* PRINTABLE PDF PREVIEW VIEW */}
         <div className={activeTab === 'pdf-preview' ? 'block' : 'hidden print:block'}>
-          <div className="no-print bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 flex items-center justify-between text-xs text-amber-900">
+          <div className="no-print bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
             <span>
-              <strong>Print Mode Preview:</strong> Below is the exact A4 2-page report matching Koko Digital Studio&apos;s layout. Click &quot;Print / Download PDF&quot; to export.
+              <strong>Live Report &amp; Print Preview:</strong> Review how your saved <strong>Goals</strong>,{' '}
+              <strong>Insights</strong>, and <strong>Next Steps</strong> commentary looks alongside the live charts and metrics before downloading the PDF.
             </span>
-            <button
-              onClick={() => window.print()}
-              className="px-3 py-1 bg-amber-900 text-white font-bold rounded-lg hover:bg-amber-800 transition-all cursor-pointer"
-            >
-              Print / Download PDF
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('dashboard')}
+                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-950 font-bold rounded-lg hover:bg-amber-100 transition-all cursor-pointer"
+              >
+                ← Back to Edit Commentary
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-3.5 py-1.5 bg-black text-white font-extrabold rounded-lg hover:bg-gray-800 transition-all cursor-pointer"
+              >
+                Print / Download PDF
+              </button>
+            </div>
           </div>
           <PrintableReport report={safeReport} client={selectedClient} />
         </div>

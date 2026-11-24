@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
 import { createEmptyReport } from '@/lib/mockData';
+import { getServerReport, saveServerReport } from '@/lib/serverStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     }
 
     if (clientId) {
+      // 1. Check PostgreSQL database first
       try {
         const reports = await prisma.monthlyReport.findMany({
           where: { clientId },
@@ -30,10 +32,20 @@ export async function GET(request: Request) {
         });
 
         if (reports.length > 0) {
-          return NextResponse.json(serializeData(reports));
+          const serialized: any[] = serializeData(reports);
+          if (serialized[0]) {
+            saveServerReport(clientId, serialized[0]);
+          }
+          return NextResponse.json(serialized);
         }
       } catch (dbErr) {
-        console.warn('Prisma DB query reports error, returning fallback:', dbErr);
+        console.warn('Prisma DB query reports notice, checking serverStore:', dbErr);
+      }
+
+      // 2. Check backend serverStore
+      const savedServerReport = getServerReport(clientId);
+      if (savedServerReport) {
+        return NextResponse.json([savedServerReport]);
       }
     }
 

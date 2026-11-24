@@ -236,8 +236,40 @@ export default function BonusTrackerPage() {
       }
     } catch (e) {}
 
+    // Fetch backend-persisted 50K+ bonus videos from database/serverStore
+    axios
+      .get('/api/bonus-tracker/videos')
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data?.videos) && res.data.videos.length > 0) {
+          const validServer = res.data.videos.filter(
+            (v: any) => (Number(v?.viewsCount) || 0) >= BONUS_VIEW_THRESHOLD
+          );
+          if (validServer.length > 0) {
+            setTrackedVideos((prev) => {
+              const map = new Map<string, BonusVideoItem>();
+              validServer.forEach((sv: BonusVideoItem) => map.set(getVideoUniqueKey(sv), sv));
+              prev.forEach((pv) => map.set(getVideoUniqueKey(pv), pv));
+              const merged = Array.from(map.values()).sort(
+                (a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0)
+              );
+              try {
+                localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
+        }
+      })
+      .catch(() => {});
+
     discoverAndScanConnectedAccounts(initialUnpicked);
   }, []);
+
+  const persistTrackedVideosToBackend = (videosToSave: BonusVideoItem[]) => {
+    axios
+      .post('/api/bonus-tracker/videos', { videos: videosToSave })
+      .catch(() => {});
+  };
 
   // Discover all accounts connected across Settings, Dashboard, Managed Pages, and Server Store
   const discoverAndScanConnectedAccounts = async (currentUnpickedIds: string[] = unpickedIds) => {
@@ -433,7 +465,43 @@ export default function BonusTrackerPage() {
         } catch (e) {}
       }
 
-      const accountsList = Array.from(accountMap.values());
+      let accountsList = Array.from(accountMap.values());
+
+      // Filter connected accounts if logged in as an Account Manager with restricted assignments
+      try {
+        const sessRes = await axios.get('/api/auth/session');
+        const user = sessRes.data?.user;
+        if (
+          user &&
+          user.role === 'ACCOUNT_MANAGER' &&
+          Array.isArray(user.assignedClientIds) &&
+          !user.assignedClientIds.includes('*') &&
+          user.assignedClientIds.length > 0
+        ) {
+          const assignedSet = new Set(
+            user.assignedClientIds.map((x: string) =>
+              String(x || '')
+                .toLowerCase()
+                .replace(/^@/, '')
+                .trim()
+            )
+          );
+          const scoped = accountsList.filter((acc) => {
+            const u = acc.username.toLowerCase().replace(/^@/, '');
+            const pid = (acc.pageId || '').toLowerCase();
+            const dname = (acc.displayName || '').toLowerCase();
+            return (
+              assignedSet.has(u) ||
+              (pid && assignedSet.has(pid)) ||
+              (dname && assignedSet.has(dname))
+            );
+          });
+          if (scoped.length > 0) {
+            accountsList = scoped;
+          }
+        }
+      } catch {}
+
       setConnectedAccounts(accountsList);
 
       // G. Gather any already-synced real videos from localStorage reports first for instant display
@@ -597,6 +665,7 @@ export default function BonusTrackerPage() {
           try {
             localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(updatedTracked));
           } catch (e) {}
+          persistTrackedVideosToBackend(updatedTracked);
           return updatedTracked;
         });
       }
@@ -620,6 +689,7 @@ export default function BonusTrackerPage() {
       const updatedUnpicked = Array.from(new Set([...unpickedIds, vKey]));
       setTrackedVideos(updatedTracked);
       setUnpickedIds(updatedUnpicked);
+      persistTrackedVideosToBackend(updatedTracked);
       try {
         localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(updatedTracked));
         localStorage.setItem(STORAGE_UNPICKED_IDS_KEY, JSON.stringify(updatedUnpicked));
@@ -631,6 +701,7 @@ export default function BonusTrackerPage() {
       const updatedUnpicked = unpickedIds.filter((id) => id !== vKey);
       setTrackedVideos(updatedTracked);
       setUnpickedIds(updatedUnpicked);
+      persistTrackedVideosToBackend(updatedTracked);
       try {
         localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(updatedTracked));
         localStorage.setItem(STORAGE_UNPICKED_IDS_KEY, JSON.stringify(updatedUnpicked));
@@ -653,6 +724,7 @@ export default function BonusTrackerPage() {
       (a, b) => (Number(b.viewsCount) || 0) - (Number(a.viewsCount) || 0)
     );
     setTrackedVideos(updatedTracked);
+    persistTrackedVideosToBackend(updatedTracked);
     const pickedKeys = new Set(qualifying.map((q) => getVideoUniqueKey(q)));
     const remainingUnpicked = unpickedIds.filter((id) => !pickedKeys.has(id));
     setUnpickedIds(remainingUnpicked);
@@ -735,6 +807,7 @@ export default function BonusTrackerPage() {
 
     setScannedVideos(updatedScanned);
     setTrackedVideos(updatedTracked);
+    persistTrackedVideosToBackend(updatedTracked);
     try {
       localStorage.setItem(STORAGE_SCANNED_VIDEOS_KEY, JSON.stringify(updatedScanned));
       localStorage.setItem(STORAGE_TRACKED_VIDEOS_KEY, JSON.stringify(updatedTracked));

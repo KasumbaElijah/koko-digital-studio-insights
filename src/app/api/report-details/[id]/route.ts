@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma, serializeData } from '@/lib/prisma';
-import { INITIAL_REPORTS } from '@/lib/mockData';
+import { createEmptyReport } from '@/lib/mockData';
+import {
+  getServerReport,
+  getServerReportById,
+  saveServerReport,
+} from '@/lib/serverStore';
 
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
@@ -21,18 +27,23 @@ export async function GET(
         return NextResponse.json(serializeData(report));
       }
     } catch (dbErr) {
-      console.warn('Prisma DB query error in report details, returning fallback:', dbErr);
+      console.warn('Prisma DB query notice in report details, checking serverStore:', dbErr);
     }
 
-    const fallback = Object.values(INITIAL_REPORTS).find((r) => r.id === params.id) || Object.values(INITIAL_REPORTS)[0];
-    return NextResponse.json(fallback);
+    const serverRep = getServerReportById(params.id);
+    if (serverRep) {
+      return NextResponse.json(serverRep);
+    }
+
+    const fallbackClientId = params.id.startsWith('report-')
+      ? params.id.slice('report-'.length)
+      : '';
+    return NextResponse.json(createEmptyReport(fallbackClientId));
   } catch (error) {
     console.error('Error fetching report:', error);
-    return NextResponse.json(Object.values(INITIAL_REPORTS)[0]);
+    return NextResponse.json(createEmptyReport(''));
   }
 }
-
-export const dynamic = 'force-dynamic';
 
 export async function PUT(
   request: Request,
@@ -40,8 +51,43 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { goals, insights, nextSteps, startDate, endDate, posts } = body;
+    const {
+      clientId: bodyClientId,
+      goals,
+      insights,
+      nextSteps,
+      startDate,
+      endDate,
+      posts,
+    } = body;
 
+    const inferredClientId =
+      bodyClientId ||
+      (params.id.startsWith('report-') ? params.id.slice('report-'.length) : '');
+
+    // 1. Always update backend serverStore immediately
+    const existingServerReport =
+      getServerReportById(params.id) ||
+      (inferredClientId ? getServerReport(inferredClientId) : null) ||
+      createEmptyReport(inferredClientId);
+
+    const mergedServerReport = {
+      ...existingServerReport,
+      id: params.id,
+      clientId: inferredClientId || existingServerReport.clientId,
+      ...(goals !== undefined ? { goals } : {}),
+      ...(insights !== undefined ? { insights } : {}),
+      ...(nextSteps !== undefined ? { nextSteps } : {}),
+      ...(startDate !== undefined ? { startDate } : {}),
+      ...(endDate !== undefined ? { endDate } : {}),
+      ...(Array.isArray(posts) ? { posts } : {}),
+    };
+
+    if (mergedServerReport.clientId) {
+      saveServerReport(mergedServerReport.clientId, mergedServerReport);
+    }
+
+    // 2. Persist in PostgreSQL via Prisma
     try {
       const updateData: any = {};
       if (goals !== undefined) updateData.goals = goals;
@@ -57,7 +103,11 @@ export async function PUT(
             data: posts.map((p: any) => ({
               reportId: params.id,
               platform: p.platform || 'instagram',
-              postId: p.postId || `post_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              postId:
+                p.postId ||
+                `post_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              title: p.title || null,
+              permalink: p.permalink || null,
               contentFormat: p.contentFormat || 'Videos',
               viewsCount: Number(p.viewsCount) || 0,
               likesCount: Number(p.likesCount) || 0,
@@ -82,14 +132,14 @@ export async function PUT(
 
       return NextResponse.json(serializeData(updatedReport));
     } catch (dbErr) {
-      console.warn('DB update fallback in report details:', dbErr);
-      return NextResponse.json({
-        id: params.id,
-        ...body,
-      });
+      console.warn('DB update notice in report details (saved in backend serverStore):', dbErr);
+      return NextResponse.json(mergedServerReport);
     }
   } catch (error) {
     console.error('Error updating report:', error);
-    return NextResponse.json({ error: 'Failed to update report strategy fields' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to update report strategy fields' },
+      { status: 500 }
+    );
   }
 }

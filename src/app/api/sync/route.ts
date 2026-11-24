@@ -4,6 +4,13 @@ import { fetchTikTokMetrics } from '@/lib/api/tiktok';
 import { prisma } from '@/lib/prisma';
 import { sanitizePostsList, formatTikTokHandle } from '@/lib/managedPages';
 import { calculatePctChange } from '@/lib/analytics';
+import {
+  getServerSocialAccounts,
+  saveServerSocialAccount,
+  getServerReport,
+  saveServerReport,
+  setServerActiveClientId,
+} from '@/lib/serverStore';
 
 export async function POST(request: Request) {
   try {
@@ -59,7 +66,6 @@ export async function POST(request: Request) {
 
     if (!socialAccounts || socialAccounts.length === 0) {
       try {
-        const { getServerSocialAccounts } = await import('@/lib/serverStore');
         socialAccounts = getServerSocialAccounts(clientId);
       } catch {}
     }
@@ -78,6 +84,81 @@ export async function POST(request: Request) {
     const rawTtHandle =
       bodyTiktokPlatformAccountId || ttAccount?.platformAccountId || '';
     const effectiveTtHandle = rawTtHandle ? formatTikTokHandle(rawTtHandle) : '';
+
+    // Persist connected social account credentials in backend store & database so clearing browser cache never loses them
+    if (igPlatformAccountId || igToken) {
+      const igSa = {
+        id: `sa_${clientId}_instagram`,
+        clientId,
+        platform: 'instagram' as const,
+        platformAccountId: igPlatformAccountId || '@elijah_kasumba',
+        accessToken: igToken || 'ig_direct_persistent',
+        pageId: effectivePageId || undefined,
+        pageName: effectivePageName || undefined,
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+      saveServerSocialAccount(igSa);
+      try {
+        await prisma.client.upsert({
+          where: { id: clientId },
+          update: {},
+          create: { id: clientId, name: effectivePageName || 'Connected Client' },
+        });
+        await prisma.socialAccount.upsert({
+          where: { id: igSa.id },
+          update: {
+            platformAccountId: igSa.platformAccountId,
+            accessToken: igSa.accessToken,
+            pageId: igSa.pageId || null,
+            pageName: igSa.pageName || null,
+          },
+          create: {
+            id: igSa.id,
+            clientId,
+            platform: 'instagram',
+            platformAccountId: igSa.platformAccountId,
+            accessToken: igSa.accessToken,
+            pageId: igSa.pageId || null,
+            pageName: igSa.pageName || null,
+            tokenExpiresAt: new Date(igSa.tokenExpiresAt),
+          },
+        });
+      } catch {}
+    }
+
+    if (effectiveTtHandle || ttToken) {
+      const ttSa = {
+        id: `sa_${clientId}_tiktok`,
+        clientId,
+        platform: 'tiktok' as const,
+        platformAccountId: effectiveTtHandle || '@kash8342',
+        accessToken: ttToken || 'tt_direct_persistent',
+        tokenExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+      saveServerSocialAccount(ttSa);
+      try {
+        await prisma.client.upsert({
+          where: { id: clientId },
+          update: {},
+          create: { id: clientId, name: 'Connected Client' },
+        });
+        await prisma.socialAccount.upsert({
+          where: { id: ttSa.id },
+          update: {
+            platformAccountId: ttSa.platformAccountId,
+            accessToken: ttSa.accessToken,
+          },
+          create: {
+            id: ttSa.id,
+            clientId,
+            platform: 'tiktok',
+            platformAccountId: ttSa.platformAccountId,
+            accessToken: ttSa.accessToken,
+            tokenExpiresAt: new Date(ttSa.tokenExpiresAt),
+          },
+        });
+      } catch {}
+    }
 
     const shouldSyncInstagram = Boolean(
       igPlatformAccountId || effectivePageId || effectivePageName || igToken
@@ -301,20 +382,39 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check if an existing report has saved commentary (Goals, Insights, Next Steps) so we preserve Account Manager edits
+    const existingStoredReport = getServerReport(clientId);
+    const defaultGoals = [
+      'Expand Instagram Reels reach and sustain strong engagement across core audience.',
+      'Maintain consistent weekly short-form video publishing cadence across channels.',
+    ];
+    const defaultNextSteps = [
+      'Scale top performing creative formats identified from real post engagement.',
+      'Monitor audience retention and engagement rates across upcoming releases.',
+    ];
+
+    const preservedGoals =
+      Array.isArray(existingStoredReport?.goals) && existingStoredReport!.goals.length > 0
+        ? existingStoredReport!.goals
+        : defaultGoals;
+    const preservedInsights =
+      Array.isArray(existingStoredReport?.insights) && existingStoredReport!.insights.length > 0
+        ? existingStoredReport!.insights
+        : insightsList;
+    const preservedNextSteps =
+      Array.isArray(existingStoredReport?.nextSteps) && existingStoredReport!.nextSteps.length > 0
+        ? existingStoredReport!.nextSteps
+        : defaultNextSteps;
+
+    const reportId = `report-${clientId}`;
     const updatedReport = {
-      id: `report-${clientId}`,
+      id: reportId,
       clientId,
       startDate: startDateStr,
       endDate: endDateStr,
-      goals: [
-        'Expand Instagram Reels reach and sustain strong engagement across core audience.',
-        'Maintain consistent weekly short-form video publishing cadence across channels.',
-      ],
-      insights: insightsList,
-      nextSteps: [
-        'Scale top performing creative formats identified from real post engagement.',
-        'Monitor audience retention and engagement rates across upcoming releases.',
-      ],
+      goals: preservedGoals,
+      insights: preservedInsights,
+      nextSteps: preservedNextSteps,
       igFollowersGrowth: igFollowers,
       igViews,
       igViewsPctChange: igPctChange,
@@ -330,7 +430,72 @@ export async function POST(request: Request) {
       posts,
     };
 
-    return NextResponse.json({
+    // Persist report & posts in backend serverStore and PostgreSQL database
+    saveServerReport(clientId, updatedReport);
+    setServerActiveClientId(clientId);
+
+    try {
+      await prisma.monthlyReport.upsert({
+        where: { id: reportId },
+        update: {
+          startDate: new Date(startDateStr),
+          endDate: new Date(endDateStr),
+          goals: preservedGoals,
+          insights: preservedInsights,
+          nextSteps: preservedNextSteps,
+          igFollowersGrowth: igFollowers,
+          igViews: BigInt(Math.round(igViews)),
+          igViewsPctChange: igPctChange,
+          igEngagementRate: igEngagement,
+          ttFollowersGrowth: ttFollowers,
+          ttViews: BigInt(Math.round(ttViews)),
+          ttViewsPctChange: ttPctChange,
+          ttEngagementRate: ttEngagement,
+        },
+        create: {
+          id: reportId,
+          clientId,
+          startDate: new Date(startDateStr),
+          endDate: new Date(endDateStr),
+          goals: preservedGoals,
+          insights: preservedInsights,
+          nextSteps: preservedNextSteps,
+          igFollowersGrowth: igFollowers,
+          igViews: BigInt(Math.round(igViews)),
+          igViewsPctChange: igPctChange,
+          igEngagementRate: igEngagement,
+          ttFollowersGrowth: ttFollowers,
+          ttViews: BigInt(Math.round(ttViews)),
+          ttViewsPctChange: ttPctChange,
+          ttEngagementRate: ttEngagement,
+        },
+      });
+
+      if (posts.length > 0) {
+        await prisma.contentPost.deleteMany({ where: { reportId } });
+        await prisma.contentPost.createMany({
+          data: posts.map((p: any) => ({
+            reportId,
+            platform: p.platform || 'instagram',
+            postId: String(p.postId || p.id || `post_${Date.now()}`),
+            title: p.title || null,
+            permalink: p.permalink || null,
+            contentFormat: p.contentFormat || 'Videos',
+            viewsCount: Number(p.viewsCount) || 0,
+            likesCount: Number(p.likesCount) || 0,
+            commentsCount: Number(p.commentsCount) || 0,
+            sharesCount: Number(p.sharesCount) || 0,
+            thumbnailUrl: p.thumbnailUrl || null,
+            isTopPerformer: Boolean(p.isTopPerformer),
+            publishedAt: p.publishedAt ? new Date(p.publishedAt) : new Date(),
+          })),
+        });
+      }
+    } catch (dbErr) {
+      // Saved in backend serverStore
+    }
+
+    const res = NextResponse.json({
       ...updatedReport,
       success: true,
       syncedAt: new Date().toISOString(),
@@ -338,6 +503,14 @@ export async function POST(request: Request) {
       ttMetrics,
       report: updatedReport,
     });
+    res.cookies.set('koko_http_active_client', clientId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 365 * 24 * 60 * 60,
+    });
+    return res;
   } catch (error) {
     console.error('Error during social sync:', error);
     return NextResponse.json(

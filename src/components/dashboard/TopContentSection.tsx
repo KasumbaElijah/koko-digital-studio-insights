@@ -205,22 +205,26 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
           <AlertCircle className="w-6 h-6 text-gray-400 mb-2" />
           <p className="text-sm font-bold text-gray-700">No {platformLabelPrefix || 'Media'} Posts Found</p>
           <p className="text-xs text-gray-500 mt-1 max-w-sm">
-            Add real post links or sync accounts to display top performing {platformLabelPrefix || 'creative'} content.
+            {onUpdatePosts
+              ? `Add real post links or sync accounts to display top performing ${platformLabelPrefix || 'creative'} content.`
+              : `Click Sync Live to pull the latest real ${platformLabelPrefix || 'creative'} content.`}
           </p>
-          <button
-            onClick={() => {
-              if (platformLabelPrefix?.toLowerCase().includes('tiktok')) {
-                setManualPlatform('tiktok');
-              } else if (platformLabelPrefix?.toLowerCase().includes('instagram')) {
-                setManualPlatform('instagram');
-              }
-              setShowAddModal(true);
-            }}
-            className="mt-4 px-3.5 py-1.5 bg-black hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add {platformLabelPrefix || 'Post'}
-          </button>
+          {onUpdatePosts && (
+            <button
+              onClick={() => {
+                if (platformLabelPrefix?.toLowerCase().includes('tiktok')) {
+                  setManualPlatform('tiktok');
+                } else if (platformLabelPrefix?.toLowerCase().includes('instagram')) {
+                  setManualPlatform('instagram');
+                }
+                setShowAddModal(true);
+              }}
+              className="mt-4 px-3.5 py-1.5 bg-black hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add {platformLabelPrefix || 'Post'}
+            </button>
+          )}
         </div>
       );
     }
@@ -458,13 +462,20 @@ export const TopContentSection: React.FC<TopContentSectionProps> = ({
             </button>
           )}
 
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Real Post
-          </button>
+          {onUpdatePosts ? (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-black hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Real Post
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold rounded-xl">
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+              Read-Only Pulled Metrics
+            </span>
+          )}
         </div>
       </div>
 

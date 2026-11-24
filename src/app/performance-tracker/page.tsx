@@ -64,6 +64,21 @@ export default function PerformanceTrackerPage() {
   const [results, setResults] = useState<TrackerCalculationResult[]>([]);
   const [isCalculating, setIsCalculating] = useState<boolean>(false);
   const [lastCalculatedAt, setLastCalculatedAt] = useState<string | null>(null);
+  const [sessionUser, setSessionUser] = useState<{
+    role: 'ADMIN' | 'ACCOUNT_MANAGER';
+    assignedClientIds: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    axios
+      .get('/api/auth/session')
+      .then((res) => {
+        if (res.data?.authenticated && res.data?.user) {
+          setSessionUser(res.data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 5. Google Sheets Export State & Modal
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
@@ -299,9 +314,33 @@ export default function PerformanceTrackerPage() {
     return Array.from(set);
   }, [accounts]);
 
-  // Filtered Results by Pod and Search term
+  // Filtered Results by Role Assignments, Pod, and Search term
   const filteredResults = useMemo(() => {
+    const isRestrictedAm =
+      sessionUser &&
+      sessionUser.role === 'ACCOUNT_MANAGER' &&
+      !sessionUser.assignedClientIds.includes('*');
+    const assignedSet = new Set(
+      (sessionUser?.assignedClientIds || []).map((x) =>
+        String(x || '')
+          .toLowerCase()
+          .replace(/^@/, '')
+          .trim()
+      )
+    );
+
     return results.filter((r) => {
+      if (isRestrictedAm && assignedSet.size > 0) {
+        const ig = String(r.instagramHandle || '').toLowerCase().replace(/^@/, '').trim();
+        const tt = String(r.tiktokHandle || '').toLowerCase().replace(/^@/, '').trim();
+        const nm = String(r.name || '').toLowerCase().trim();
+        const matchesAssigned =
+          (ig && assignedSet.has(ig)) ||
+          (tt && assignedSet.has(tt)) ||
+          assignedSet.has(nm);
+        if (!matchesAssigned) return false;
+      }
+
       const matchPod = selectedPod === 'All' || r.pod.toLowerCase() === selectedPod.toLowerCase();
       const matchSearch =
         !searchTerm.trim() ||
@@ -309,7 +348,7 @@ export default function PerformanceTrackerPage() {
         r.pod.toLowerCase().includes(searchTerm.toLowerCase());
       return matchPod && matchSearch;
     });
-  }, [results, selectedPod, searchTerm]);
+  }, [results, selectedPod, searchTerm, sessionUser]);
 
   // Aggregate Performance Metrics
   const summaryKPIs = useMemo(() => {
