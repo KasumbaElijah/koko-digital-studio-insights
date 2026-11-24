@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getTrackerAccounts, TrackerCalculationResult } from '@/lib/trackerStore';
+import {
+  getTrackerAccounts,
+  TrackerAccountConfig,
+  TrackerCalculationResult,
+} from '@/lib/trackerStore';
 import { fetchTikTokProfileVideos } from '@/lib/api/tiktokScraper';
-import { fetchInstagramMetrics } from '@/lib/api/instagram';
-import { prisma } from '@/lib/prisma';
+import { fetchInstagramPublicProfile } from '@/lib/api/instagramScraper';
+import {
+  normalizeInstagramUsername,
+  normalizeTikTokUsername,
+  formatTikTokHandle,
+  resolveInstagramUsername,
+} from '@/lib/managedPages';
 import { getServerSocialAccounts } from '@/lib/serverStore';
 
 export const dynamic = 'force-dynamic';
@@ -30,17 +39,20 @@ export async function POST(request: Request) {
     let startDate = '';
     let endDate = '';
     let podFilter = 'All';
+    let clientConnectedAccounts: TrackerAccountConfig[] = [];
 
     try {
       const body = await request.json();
       startDate = body.startDate || '';
       endDate = body.endDate || '';
       podFilter = body.podFilter || 'All';
+      if (Array.isArray(body.connectedAccounts)) {
+        clientConnectedAccounts = body.connectedAccounts;
+      }
     } catch {
       // JSON body parse fallback
     }
 
-    // Default dates: 1st of current month up to today
     const now = new Date();
     if (!startDate) {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -49,131 +61,213 @@ export async function POST(request: Request) {
       endDate = now.toISOString().split('T')[0];
     }
 
-    const allAccounts = getTrackerAccounts();
-    const filteredAccounts = podFilter && podFilter.toLowerCase() !== 'all'
-      ? allAccounts.filter((a) => a.pod.toLowerCase() === podFilter.toLowerCase())
-      : allAccounts;
+    const baseAccounts = [...getTrackerAccounts()];
 
-    const startObj = new Date(startDate);
-    const endObj = new Date(endDate);
+    // Merge server-stored connected social accounts
+    try {
+      const serverSocial = getServerSocialAccounts('all');
+      serverSocial.forEach((sa) => {
+        if (sa.platform === 'instagram') {
+          const cleanIg = resolveInstagramUsername(sa.platformAccountId, sa.pageId, sa.pageName);
+          if (!cleanIg) return;
+          const handle = `@${cleanIg}`;
+          const exists = baseAccounts.some(
+            (a) =>
+              normalizeInstagramUsername(a.instagramHandle) === cleanIg.toLowerCase()
+          );
+          if (!exists) {
+            baseAccounts.push({
+              id: `acc_ig_${cleanIg}`,
+              name: sa.pageName || handle,
+              pod: 'Alpha',
+              platform: 'instagram',
+              instagramHandle: handle,
+              targetVideos: 10,
+              targetGraphics: 6,
+              expectedAvgViews: 10000,
+            });
+          }
+        } else if (sa.platform === 'tiktok' && sa.platformAccountId) {
+          const cleanTt = normalizeTikTokUsername(sa.platformAccountId);
+          if (!cleanTt) return;
+          const handle = formatTikTokHandle(cleanTt);
+          const exists = baseAccounts.some(
+            (a) =>
+              normalizeTikTokUsername(a.tiktokHandle) === cleanTt.toLowerCase()
+          );
+          if (!exists) {
+            baseAccounts.push({
+              id: `acc_tt_${cleanTt}`,
+              name: handle,
+              pod: 'Millions',
+              platform: 'tiktok',
+              tiktokHandle: handle,
+              targetVideos: 12,
+              targetGraphics: 4,
+              expectedAvgViews: 15000,
+            });
+          }
+        }
+      });
+    } catch {}
 
-    // Calculate metrics for each account with isolated error handling
+    // Merge any connected accounts sent from browser localStorage
+    clientConnectedAccounts.forEach((ca) => {
+      if (!ca || !ca.name) return;
+      const cleanIg = ca.instagramHandle ? normalizeInstagramUsername(ca.instagramHandle) : '';
+      const cleanTt = ca.tiktokHandle ? normalizeTikTokUsername(ca.tiktokHandle) : '';
+      const exists = baseAccounts.some((a) => {
+        if (a.id === ca.id) return true;
+        if (cleanIg && a.platform !== 'tiktok' && normalizeInstagramUsername(a.instagramHandle) === cleanIg) {
+          return true;
+        }
+        if (cleanTt && a.platform === 'tiktok' && normalizeTikTokUsername(a.tiktokHandle) === cleanTt) {
+          return true;
+        }
+        return false;
+      });
+      if (!exists) {
+        baseAccounts.push({
+          id: ca.id || `acc_${Date.now()}`,
+          name: ca.name,
+          pod: ca.pod || 'Alpha',
+          platform: ca.platform || (cleanIg ? 'instagram' : 'tiktok'),
+          instagramHandle: cleanIg ? `@${cleanIg}` : undefined,
+          tiktokHandle: cleanTt ? formatTikTokHandle(cleanTt) : undefined,
+          targetVideos: Number(ca.targetVideos) || 10,
+          targetGraphics: Number(ca.targetGraphics) || 5,
+          expectedAvgViews: Number(ca.expectedAvgViews) || 10000,
+        });
+      }
+    });
+
+    const filteredAccounts =
+      podFilter && podFilter.toLowerCase() !== 'all'
+        ? baseAccounts.filter((a) => a.pod.toLowerCase() === podFilter.toLowerCase())
+        : baseAccounts;
+
+    // Request-scoped caches so shared handles are scraped once
+    const igPromiseCache = new Map<string, ReturnType<typeof fetchInstagramPublicProfile>>();
+    const ttPromiseCache = new Map<string, ReturnType<typeof fetchTikTokProfileVideos>>();
+
+    const getIgScrape = (username: string) => {
+      const key = username.toLowerCase();
+      let p = igPromiseCache.get(key);
+      if (!p) {
+        p = fetchInstagramPublicProfile(username);
+        igPromiseCache.set(key, p);
+      }
+      return p;
+    };
+
+    const getTtScrape = (username: string) => {
+      const key = username.toLowerCase();
+      let p = ttPromiseCache.get(key);
+      if (!p) {
+        p = fetchTikTokProfileVideos(username);
+        ttPromiseCache.set(key, p);
+      }
+      return p;
+    };
+
     const results: TrackerCalculationResult[] = await Promise.all(
       filteredAccounts.map(async (acc) => {
         try {
           let videoCount = 0;
           let totalViews = 0;
-          let statusMessage = '';
+          let followerCount: number | undefined = undefined;
+          const statusParts: string[] = [];
 
-          const ttUsername = (acc.tiktokHandle || '').replace(/^@/, '').trim();
-          const igUsername = (acc.instagramHandle || '').replace(/^@/, '').trim();
+          const ttUsername = normalizeTikTokUsername(acc.tiktokHandle);
+          const igUsername = normalizeInstagramUsername(acc.instagramHandle);
 
-          // 1. Fetch TikTok videos if configured
-          if (ttUsername) {
+          const shouldCheckIg =
+            Boolean(igUsername) && (acc.platform === 'instagram' || acc.platform === 'both' || !ttUsername);
+          const shouldCheckTt =
+            Boolean(ttUsername) && (acc.platform === 'tiktok' || acc.platform === 'both' || !igUsername);
+
+          // 1. Live Instagram Public Profile / Embed Scrape
+          if (shouldCheckIg && igUsername) {
             try {
-              const ttScrape = await fetchTikTokProfileVideos(ttUsername);
-              if (ttScrape.success && Array.isArray(ttScrape.posts) && ttScrape.posts.length > 0) {
-                const inRangeVideos = ttScrape.posts.filter((p) => {
-                  const isVideo = (p.contentFormat || '').toLowerCase() === 'videos' || !p.contentFormat;
-                  return isVideo && isWithinRange(p.publishedAt, startDate, endDate);
-                });
-
-                if (inRangeVideos.length > 0) {
-                  videoCount += inRangeVideos.length;
-                  totalViews += inRangeVideos.reduce((sum, v) => sum + (Number(v.viewsCount) || 0), 0);
-                  statusMessage = `Fetched ${inRangeVideos.length} live TikTok videos.`;
-                }
+              const igScrape = await getIgScrape(igUsername);
+              if (igScrape.followerCount != null) {
+                followerCount = (followerCount || 0) + (Number(igScrape.followerCount) || 0);
               }
-            } catch (ttErr: any) {
-              console.warn(`TikTok fetch notice for ${acc.name}:`, ttErr?.message);
-            }
-          }
+              if (igScrape.success && Array.isArray(igScrape.posts) && igScrape.posts.length > 0) {
+                const allIgVideos = igScrape.posts.filter(
+                  (p) =>
+                    (p.contentFormat || '').toLowerCase() === 'videos' ||
+                    (Number(p.viewsCount) || 0) > 0
+                );
+                const inRangeIgVideos = allIgVideos.filter((p) =>
+                  isWithinRange(p.publishedAt, startDate, endDate)
+                );
+                const activeIgVideos =
+                  inRangeIgVideos.length > 0 ? inRangeIgVideos : allIgVideos;
 
-          // 2. Fetch Instagram videos if configured and videoCount is still 0
-          if (igUsername && videoCount === 0) {
-            try {
-              // Check if we have an active token in Prisma or serverStore for this account
-              let token = '';
-              let acctId = acc.instagramAccountId || igUsername;
-
-              const serverAccounts = getServerSocialAccounts();
-              const matchedSa = serverAccounts.find(
-                (sa) =>
-                  sa.platform === 'instagram' &&
-                  (sa.platformAccountId.toLowerCase().includes(igUsername.toLowerCase()) ||
-                   sa.clientId.toLowerCase().includes(acc.id.toLowerCase()))
-              );
-              if (matchedSa) {
-                token = matchedSa.accessToken;
-                acctId = matchedSa.platformAccountId;
-              }
-
-              if (token) {
-                const igMetrics = await fetchInstagramMetrics(acctId, token, startObj, endObj);
-                if (igMetrics && Array.isArray(igMetrics.posts)) {
-                  const inRangeVideos = igMetrics.posts.filter((p) => {
-                    const isVideo = (p.contentFormat || '').toLowerCase() === 'videos';
-                    return isVideo && isWithinRange(p.publishedAt, startDate, endDate);
-                  });
-                  if (inRangeVideos.length > 0) {
-                    videoCount += inRangeVideos.length;
-                    totalViews += inRangeVideos.reduce((sum, v) => sum + (Number(v.viewsCount) || 0), 0);
-                    statusMessage = `Fetched ${inRangeVideos.length} live Instagram Reels.`;
-                  }
+                if (activeIgVideos.length > 0) {
+                  videoCount += activeIgVideos.length;
+                  totalViews += activeIgVideos.reduce(
+                    (sum, v) => sum + (Number(v.viewsCount) || 0),
+                    0
+                  );
+                  statusParts.push(`${activeIgVideos.length} live IG videos (@${igUsername})`);
                 }
               }
             } catch (igErr: any) {
-              console.warn(`Instagram fetch notice for ${acc.name}:`, igErr?.message);
+              console.warn(`Instagram tracker scrape notice for ${acc.name}:`, igErr?.message);
             }
           }
 
-          // 3. Fallback: Check local Prisma database for any synced ContentPost records for this client/account
-          if (videoCount === 0) {
+          // 2. Live TikTok Profile Scrape
+          if (shouldCheckTt && ttUsername) {
             try {
-              const dbPosts = await prisma.contentPost.findMany({
-                where: {
-                  report: {
-                    client: {
-                      name: {
-                        contains: acc.name,
-                        mode: 'insensitive',
-                      },
-                    },
-                  },
-                },
-                orderBy: { publishedAt: 'desc' },
-                take: 20,
-              });
+              const ttScrape = await getTtScrape(ttUsername);
+              if (ttScrape.followerCount != null) {
+                followerCount = (followerCount || 0) + (Number(ttScrape.followerCount) || 0);
+              }
+              if (ttScrape.success && Array.isArray(ttScrape.posts) && ttScrape.posts.length > 0) {
+                const allTtVideos = ttScrape.posts.filter(
+                  (p) =>
+                    (p.contentFormat || '').toLowerCase() === 'videos' ||
+                    !p.contentFormat ||
+                    (Number(p.viewsCount) || 0) > 0
+                );
+                const inRangeTtVideos = allTtVideos.filter((p) =>
+                  isWithinRange(p.publishedAt, startDate, endDate)
+                );
+                const activeTtVideos =
+                  inRangeTtVideos.length > 0 ? inRangeTtVideos : allTtVideos;
 
-              if (dbPosts.length > 0) {
-                const inRangeDbVideos = dbPosts.filter((p) => {
-                  const isVideo = (p.contentFormat || '').toLowerCase() === 'videos';
-                  return isVideo && isWithinRange(p.publishedAt.toISOString(), startDate, endDate);
-                });
-                if (inRangeDbVideos.length > 0) {
-                  videoCount += inRangeDbVideos.length;
-                  totalViews += inRangeDbVideos.reduce((sum, v) => sum + (Number(v.viewsCount) || 0), 0);
-                  statusMessage = `Found ${inRangeDbVideos.length} synced videos in database.`;
+                if (activeTtVideos.length > 0) {
+                  videoCount += activeTtVideos.length;
+                  totalViews += activeTtVideos.reduce(
+                    (sum, v) => sum + (Number(v.viewsCount) || 0),
+                    0
+                  );
+                  statusParts.push(`${activeTtVideos.length} live TikTok videos (@${ttUsername})`);
                 }
               }
-            } catch (dbErr) {
-              // Prisma offline fallback
+            } catch (ttErr: any) {
+              console.warn(`TikTok tracker scrape notice for ${acc.name}:`, ttErr?.message);
             }
           }
 
-          // Compute actual average views and variance %
-          // If an account has zero videos published within the selected date window, display 0 views and -100% variance without throwing divide-by-zero errors.
           const actualAvgViews = videoCount > 0 ? Math.round(totalViews / videoCount) : 0;
           const expected = Number(acc.expectedAvgViews) || 1;
-          const variancePct = videoCount === 0
-            ? -100
-            : Number((((actualAvgViews - expected) / expected) * 100).toFixed(1));
+          const variancePct =
+            videoCount === 0
+              ? -100
+              : Number((((actualAvgViews - expected) / expected) * 100).toFixed(1));
 
           return {
             id: acc.id,
             name: acc.name,
             pod: acc.pod,
             platform: acc.platform,
+            instagramHandle: igUsername ? `@${igUsername}` : undefined,
+            tiktokHandle: ttUsername ? formatTikTokHandle(ttUsername) : undefined,
+            followerCount,
             targetVideos: acc.targetVideos,
             targetGraphics: acc.targetGraphics,
             expectedAvgViews: acc.expectedAvgViews,
@@ -182,7 +276,10 @@ export async function POST(request: Request) {
             totalViews,
             variancePct,
             status: videoCount > 0 ? (variancePct >= 0 ? 'success' : 'warning') : 'error',
-            statusMessage: statusMessage || (videoCount === 0 ? 'No videos published in selected date window.' : undefined),
+            statusMessage:
+              statusParts.length > 0
+                ? `Live: ${statusParts.join(' + ')}`
+                : 'No live videos returned for this handle.',
           };
         } catch (itemErr: any) {
           console.error(`Calculation error on account ${acc.name}:`, itemErr);
@@ -191,6 +288,8 @@ export async function POST(request: Request) {
             name: acc.name,
             pod: acc.pod,
             platform: acc.platform,
+            instagramHandle: acc.instagramHandle,
+            tiktokHandle: acc.tiktokHandle,
             targetVideos: acc.targetVideos,
             targetGraphics: acc.targetGraphics,
             expectedAvgViews: acc.expectedAvgViews,
@@ -223,7 +322,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const accounts = getTrackerAccounts();
     return NextResponse.json({
@@ -232,9 +331,6 @@ export async function GET(request: Request) {
       total: accounts.length,
     });
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

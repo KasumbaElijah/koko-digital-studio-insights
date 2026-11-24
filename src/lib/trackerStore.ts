@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { normalizeInstagramUsername, normalizeTikTokUsername, formatTikTokHandle } from './managedPages';
 
 export interface TrackerAccountConfig {
   id: string;
@@ -20,6 +21,9 @@ export interface TrackerCalculationResult {
   name: string;
   pod: string;
   platform: string;
+  tiktokHandle?: string;
+  instagramHandle?: string;
+  followerCount?: number;
   targetVideos: number;
   targetGraphics: number;
   expectedAvgViews: number;
@@ -36,78 +40,142 @@ const TRACKER_STORE_PATH = path.join(DATA_DIR, 'tracker_accounts.json');
 
 export const DEFAULT_TRACKER_ACCOUNTS: TrackerAccountConfig[] = [
   {
-    id: 'acc_total_tools',
-    name: 'Total Tools',
-    pod: 'Alpha',
-    platform: 'tiktok',
-    tiktokHandle: '@totaltools',
-    instagramHandle: '@totaltools',
-    targetVideos: 12,
-    targetGraphics: 8,
-    expectedAvgViews: 15000,
-    notes: 'Contract Tier 1: Hardware & Industrial power tools video showcase',
-  },
-  {
-    id: 'acc_wadad_spa',
-    name: 'Wadad Spa',
-    pod: 'Alpha',
-    platform: 'tiktok',
-    tiktokHandle: '@wadadspa',
-    instagramHandle: '@wadadspa',
-    targetVideos: 8,
-    targetGraphics: 4,
-    expectedAvgViews: 8500,
-    notes: 'Luxury wellness & beauty studio treatments and lifestyle content',
-  },
-  {
-    id: 'acc_safeboda',
-    name: 'SafeBoda Life',
-    pod: 'Millions',
-    platform: 'tiktok',
-    tiktokHandle: '@safeboda',
-    instagramHandle: '@safeboda',
-    targetVideos: 16,
-    targetGraphics: 10,
-    expectedAvgViews: 35000,
-    notes: 'High-frequency urban mobility and food delivery campaign',
-  },
-  {
     id: 'acc_elijah_kasumba',
-    name: 'Elijah Kasumba',
+    name: 'Kasumba Zion Elijah',
     pod: 'Alpha',
-    platform: 'tiktok',
-    tiktokHandle: '@kasumba95',
-    instagramHandle: '@kasumba95',
+    platform: 'both',
+    tiktokHandle: '@kash8342',
+    instagramHandle: '@elijah_kasumba',
     targetVideos: 10,
     targetGraphics: 5,
-    expectedAvgViews: 12000,
-    notes: 'Executive personal brand and creative direction videos',
+    expectedAvgViews: 15000,
+    notes: 'Primary creator profile — live Instagram (@elijah_kasumba) & TikTok (@kash8342)',
   },
   {
-    id: 'acc_ezra_creative',
-    name: 'Ezra Creative',
-    pod: 'Millions',
-    platform: 'tiktok',
-    tiktokHandle: '@ezracreative',
-    instagramHandle: '@ezracreative',
-    targetVideos: 14,
-    targetGraphics: 6,
-    expectedAvgViews: 22000,
-    notes: 'Brand entertainment and comedy series skits',
+    id: 'acc_total_tools',
+    name: 'Total Tools Prostore Uganda',
+    pod: 'Alpha',
+    platform: 'instagram',
+    instagramHandle: '@totaltoolsprostoreug',
+    targetVideos: 12,
+    targetGraphics: 8,
+    expectedAvgViews: 10000,
+    notes: 'Hardware & industrial power tools prostore (@totaltoolsprostoreug)',
   },
   {
     id: 'acc_koko_studio',
     name: 'Koko Digital Studio',
     pod: 'Alpha',
-    platform: 'both',
-    tiktokHandle: '@kokodigital',
-    instagramHandle: '@kokodigital',
-    targetVideos: 20,
-    targetGraphics: 12,
-    expectedAvgViews: 28000,
-    notes: 'Agency master showcase and creative production portfolio',
+    platform: 'instagram',
+    instagramHandle: '@koko_digital_studio',
+    targetVideos: 15,
+    targetGraphics: 10,
+    expectedAvgViews: 12000,
+    notes: 'Agency master showcase and creative production portfolio (@koko_digital_studio)',
+  },
+  {
+    id: 'acc_wadad_spa',
+    name: 'Wadad Spa ug',
+    pod: 'Alpha',
+    platform: 'instagram',
+    instagramHandle: '@wadadspaug',
+    targetVideos: 8,
+    targetGraphics: 4,
+    expectedAvgViews: 5000,
+    notes: 'Spa & wellness salon treatments and lifestyle content (@wadadspaug)',
+  },
+  {
+    id: 'acc_king_rhymes_music',
+    name: "King Rhymes' music",
+    pod: 'Millions',
+    platform: 'instagram',
+    instagramHandle: '@kingrhymesmusic',
+    targetVideos: 10,
+    targetGraphics: 6,
+    expectedAvgViews: 8000,
+    notes: 'Music & entertainment brand (@kingrhymesmusic)',
+  },
+  {
+    id: 'acc_kash8342_tiktok',
+    name: 'Kash8342 TikTok Official',
+    pod: 'Millions',
+    platform: 'tiktok',
+    tiktokHandle: '@kash8342',
+    targetVideos: 12,
+    targetGraphics: 4,
+    expectedAvgViews: 25000,
+    notes: 'Connected TikTok creator channel (@kash8342)',
   },
 ];
+
+const LEGACY_PLACEHOLDER_IDS = new Set(['acc_safeboda', 'acc_ezra_creative']);
+
+const LEGACY_HANDLE_UPGRADES: Record<string, { name: string; platform: 'tiktok' | 'instagram' | 'both'; instagramHandle?: string; tiktokHandle?: string }> = {
+  acc_total_tools: {
+    name: 'Total Tools Prostore Uganda',
+    platform: 'instagram',
+    instagramHandle: '@totaltoolsprostoreug',
+  },
+  acc_wadad_spa: {
+    name: 'Wadad Spa ug',
+    platform: 'instagram',
+    instagramHandle: '@wadadspaug',
+  },
+  acc_elijah_kasumba: {
+    name: 'Kasumba Zion Elijah',
+    platform: 'both',
+    instagramHandle: '@elijah_kasumba',
+    tiktokHandle: '@kash8342',
+  },
+  acc_koko_studio: {
+    name: 'Koko Digital Studio',
+    platform: 'instagram',
+    instagramHandle: '@koko_digital_studio',
+  },
+};
+
+function sanitizeAndUpgradeTrackerAccounts(rawList: TrackerAccountConfig[]): TrackerAccountConfig[] {
+  const upgraded: TrackerAccountConfig[] = [];
+
+  for (const item of rawList) {
+    if (!item || !item.id) continue;
+    // Remove old synthetic placeholder accounts
+    if (LEGACY_PLACEHOLDER_IDS.has(item.id)) continue;
+
+    const upgrade = LEGACY_HANDLE_UPGRADES[item.id];
+    if (upgrade) {
+      upgraded.push({
+        ...item,
+        name: upgrade.name,
+        platform: upgrade.platform,
+        instagramHandle: upgrade.instagramHandle,
+        tiktokHandle: upgrade.tiktokHandle,
+      });
+    } else {
+      const cleanIg = item.instagramHandle ? `@${normalizeInstagramUsername(item.instagramHandle)}` : undefined;
+      const cleanTt = item.tiktokHandle ? formatTikTokHandle(normalizeTikTokUsername(item.tiktokHandle)) : undefined;
+      upgraded.push({
+        ...item,
+        instagramHandle: cleanIg,
+        tiktokHandle: cleanTt,
+      });
+    }
+  }
+
+  // Ensure all default real connected accounts exist
+  for (const def of DEFAULT_TRACKER_ACCOUNTS) {
+    const exists = upgraded.some(
+      (u) =>
+        u.id === def.id ||
+        u.name.toLowerCase().trim() === def.name.toLowerCase().trim()
+    );
+    if (!exists) {
+      upgraded.push(def);
+    }
+  }
+
+  return upgraded;
+}
 
 export function getTrackerAccounts(): TrackerAccountConfig[] {
   try {
@@ -121,7 +189,11 @@ export function getTrackerAccounts(): TrackerAccountConfig[] {
     const raw = fs.readFileSync(TRACKER_STORE_PATH, 'utf-8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      const cleaned = sanitizeAndUpgradeTrackerAccounts(parsed);
+      try {
+        fs.writeFileSync(TRACKER_STORE_PATH, JSON.stringify(cleaned, null, 2), 'utf-8');
+      } catch {}
+      return cleaned;
     }
     return DEFAULT_TRACKER_ACCOUNTS;
   } catch (err) {

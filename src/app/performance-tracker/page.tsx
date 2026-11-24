@@ -27,6 +27,12 @@ import {
   Info,
 } from 'lucide-react';
 import { TrackerAccountConfig, TrackerCalculationResult } from '@/lib/trackerStore';
+import {
+  normalizeInstagramUsername,
+  normalizeTikTokUsername,
+  formatTikTokHandle,
+  resolveInstagramUsername,
+} from '@/lib/managedPages';
 
 export default function PerformanceTrackerPage() {
   // 1. Date Range State: defaults to 1st of current month up to today
@@ -78,6 +84,92 @@ export default function PerformanceTrackerPage() {
   const [newAccExpectedViews, setNewAccExpectedViews] = useState(15000);
   const [isSavingAccount, setIsSavingAccount] = useState(false);
 
+  // Gather any additional accounts connected in browser localStorage (/settings or /bonus-tracker)
+  const gatherBrowserConnectedAccounts = (): TrackerAccountConfig[] => {
+    if (typeof window === 'undefined') return [];
+    const list: TrackerAccountConfig[] = [];
+    try {
+      const storedStr = localStorage.getItem('koko_connected_social_accounts');
+      if (storedStr) {
+        const parsed = JSON.parse(storedStr);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((sa: any) => {
+            if (sa.platform === 'instagram') {
+              const cleanIg = resolveInstagramUsername(sa.platformAccountId, sa.pageId, sa.pageName);
+              if (cleanIg) {
+                list.push({
+                  id: `acc_ig_${cleanIg}`,
+                  name: sa.pageName || `@${cleanIg}`,
+                  pod: 'Alpha',
+                  platform: 'instagram',
+                  instagramHandle: `@${cleanIg}`,
+                  targetVideos: 10,
+                  targetGraphics: 6,
+                  expectedAvgViews: 10000,
+                });
+              }
+            } else if (sa.platform === 'tiktok' && sa.platformAccountId) {
+              const cleanTt = normalizeTikTokUsername(sa.platformAccountId);
+              if (cleanTt) {
+                const handle = formatTikTokHandle(cleanTt);
+                list.push({
+                  id: `acc_tt_${cleanTt}`,
+                  name: handle,
+                  pod: 'Millions',
+                  platform: 'tiktok',
+                  tiktokHandle: handle,
+                  targetVideos: 12,
+                  targetGraphics: 4,
+                  expectedAvgViews: 15000,
+                });
+              }
+            }
+          });
+        }
+      }
+
+      const bonusExtraStr = localStorage.getItem('koko_bonus_extra_accounts_v1');
+      if (bonusExtraStr) {
+        const extraArr = JSON.parse(bonusExtraStr);
+        if (Array.isArray(extraArr)) {
+          extraArr.forEach((ea: any) => {
+            if (ea.platform === 'instagram' && ea.username) {
+              const cleanIg = normalizeInstagramUsername(ea.username);
+              if (cleanIg) {
+                list.push({
+                  id: `acc_ig_${cleanIg}`,
+                  name: ea.displayName || `@${cleanIg}`,
+                  pod: 'Alpha',
+                  platform: 'instagram',
+                  instagramHandle: `@${cleanIg}`,
+                  targetVideos: 10,
+                  targetGraphics: 6,
+                  expectedAvgViews: 10000,
+                });
+              }
+            } else if (ea.platform === 'tiktok' && ea.username) {
+              const cleanTt = normalizeTikTokUsername(ea.username);
+              if (cleanTt) {
+                const handle = formatTikTokHandle(cleanTt);
+                list.push({
+                  id: `acc_tt_${cleanTt}`,
+                  name: ea.displayName || handle,
+                  pod: 'Millions',
+                  platform: 'tiktok',
+                  tiktokHandle: handle,
+                  targetVideos: 12,
+                  targetGraphics: 4,
+                  expectedAvgViews: 15000,
+                });
+              }
+            }
+          });
+        }
+      }
+    } catch {}
+    return list;
+  };
+
   // Initial load: Fetch accounts and perform auto-calculation
   useEffect(() => {
     fetchAccountsAndCalculate();
@@ -86,17 +178,20 @@ export default function PerformanceTrackerPage() {
   const fetchAccountsAndCalculate = async () => {
     setIsCalculating(true);
     try {
+      const browserConnected = gatherBrowserConnectedAccounts();
+
       // 1. Fetch current accounts
       const accRes = await axios.get('/api/tracker/accounts');
       if (accRes.data?.success && Array.isArray(accRes.data?.accounts)) {
         setAccounts(accRes.data.accounts);
       }
 
-      // 2. Trigger calculation
+      // 2. Trigger live calculation across real connected accounts
       const calcRes = await axios.post('/api/tracker/calculate', {
         startDate,
         endDate,
         podFilter: selectedPod,
+        connectedAccounts: browserConnected,
       });
 
       if (calcRes.data?.success && Array.isArray(calcRes.data?.data)) {
@@ -114,10 +209,12 @@ export default function PerformanceTrackerPage() {
     setIsCalculating(true);
     setExportResponse(null);
     try {
+      const browserConnected = gatherBrowserConnectedAccounts();
       const calcRes = await axios.post('/api/tracker/calculate', {
         startDate,
         endDate,
         podFilter: selectedPod,
+        connectedAccounts: browserConnected,
       });
       if (calcRes.data?.success && Array.isArray(calcRes.data?.data)) {
         setResults(calcRes.data.data);
@@ -575,11 +672,22 @@ export default function PerformanceTrackerPage() {
                             {item.pod}
                           </span>
                           <div>
-                            <div className="font-bold text-gray-900 text-sm">
-                              {item.name}
+                            <div className="font-bold text-gray-900 text-sm flex items-center gap-2 flex-wrap">
+                              <span>{item.name}</span>
+                              {item.followerCount != null && item.followerCount > 0 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  {item.followerCount.toLocaleString()} followers
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[11px] text-gray-400 font-mono">
-                              {item.platform.toUpperCase()}
+                            <div className="text-[11px] text-gray-500 font-mono flex items-center gap-2 flex-wrap mt-0.5">
+                              <span className="font-bold text-gray-700">{item.platform.toUpperCase()}</span>
+                              {item.instagramHandle && (
+                                <span className="text-pink-600 font-semibold">IG: {item.instagramHandle}</span>
+                              )}
+                              {item.tiktokHandle && (
+                                <span className="text-gray-800 font-semibold">TT: {item.tiktokHandle}</span>
+                              )}
                             </div>
                           </div>
                         </div>
